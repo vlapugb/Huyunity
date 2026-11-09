@@ -15,8 +15,14 @@ resolve_binary() {
         hello_cube|cube)
             echo "${BUILD_DIR}/examples/hello_cube/huynity_hello_cube"
             ;;
-        game_scene|arena|orbit_arena)
+        game_scene|village|windmill)
             echo "${BUILD_DIR}/examples/game_scene/huynity_game_scene"
+            ;;
+        corridor|first_person|first_person_corridor)
+            echo "${BUILD_DIR}/examples/first_person_corridor/huynity_first_person_corridor"
+            ;;
+        arena|third_person|third_person_arena)
+            echo "${BUILD_DIR}/examples/third_person_arena/huynity_third_person_arena"
             ;;
         renderer_gallery|gallery)
             echo "${BUILD_DIR}/examples/renderer_gallery/huynity_renderer_gallery"

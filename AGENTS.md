@@ -54,10 +54,12 @@ Huynity/
 ├── apps/editor/                      # план: main и UI
 ├── tests/integration/                # реализовано: 2D/3D сценарии, нагрузочные профили, baseline
 ├── examples/
+│   ├── first_person_corridor/        # кольцевой коридор со стенами, потолком, светом и камерой от первого лица
 │   ├── game_scene/                   # изометрическая деревня с мельницей, прудом и управлением камерой
 │   ├── hello_cube/                   # минимальный пример игры на фасаде Engine
 │   ├── objectlib/                    # работающий пример геометрии Object Library
 │   ├── renderer_gallery/             # демонстрация wireframe, shading и текстурирования
+│   ├── third_person_arena/           # 3D арена с ровером и плавной преследующей камерой от третьего лица
 │   └── window_demo/                  # интерактивный пример окна и рендеринга
 ├── tools/scripts/build.sh            # настройка, сборка и ссылка compile_commands.json
 └── docs/                             # архитектура, API, UML; diagrams/ — SVG и DOT
@@ -71,7 +73,8 @@ Huynity/
   `huynity_core` / `huynity::core` (и алиас `huynity::engine`),
   `huynity_runtime` / `huynity::runtime`,
   `huynity_objectlib` / `huynity::objectlib`, `huynity_window` / `huynity::window`,
-  а также `<component>_tests`, `huynity_objectlib_example`, `huynity_window_demo`, `huynity_hello_cube`, `huynity_renderer_gallery` и `huynity_game_scene`. У каждого компонента свой CMakeLists.txt.
+  а также `<component>_tests`, `huynity_objectlib_example`, `huynity_window_demo`, `huynity_hello_cube`,
+  `huynity_renderer_gallery`, `huynity_game_scene`, `huynity_first_person_corridor` и `huynity_third_person_arena`. У каждого компонента свой CMakeLists.txt.
   Image не имеет зависимостей движка; Runtime зависит от Render Contracts и Image;
   Render Contracts зависит только от Math и STL.
 - Object Library зависит только от Math и STL. Она владеет геометрическими значениями,

@@ -65,8 +65,12 @@ case "$cmd" in
         $0 web hello_cube
         ;;
 
-    arena|game_scene)
-        $0 web game_scene
+    arena|third_person|third_person_arena)
+        $0 web third_person_arena
+        ;;
+
+    corridor|first_person|first_person_corridor)
+        $0 web first_person_corridor
         ;;
 
     gallery)

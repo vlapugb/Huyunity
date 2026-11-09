@@ -59,6 +59,36 @@ services:
       - ./output:/app/output:z
     command: web
 
+  corridor:
+    build: .
+    image: huynity:latest
+    container_name: huynity-corridor
+    ports:
+      - "6083:6080"
+    environment:
+      - EXAMPLE=first_person_corridor
+      - RESOLUTION=800x600
+      - SDL_VIDEO_DRIVER=x11
+      - XDG_RUNTIME_DIR=/tmp/runtime-dir
+    volumes:
+      - ./output:/app/output:z
+    command: web
+
+  third-person:
+    build: .
+    image: huynity:latest
+    container_name: huynity-third-person
+    ports:
+      - "6084:6080"
+    environment:
+      - EXAMPLE=third_person_arena
+      - RESOLUTION=800x600
+      - SDL_VIDEO_DRIVER=x11
+      - XDG_RUNTIME_DIR=/tmp/runtime-dir
+    volumes:
+      - ./output:/app/output:z
+    command: web
+
   test:
     build: .
     image: huynity:latest

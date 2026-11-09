@@ -39,6 +39,8 @@ if(HUYNITY_BUILD_EXAMPLES AND HUYNITY_BUILD_ADAPTERS)
     add_subdirectory(examples/hello_cube)
     add_subdirectory(examples/renderer_gallery)
     add_subdirectory(examples/game_scene)
+    add_subdirectory(examples/first_person_corridor)
+    add_subdirectory(examples/third_person_arena)
 endif()
 
 if(BUILD_TESTING)
