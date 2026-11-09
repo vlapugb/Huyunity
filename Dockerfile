@@ -3,6 +3,8 @@ FROM ubuntu:24.04 AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
+ENV XDG_RUNTIME_DIR=/tmp/runtime-dir
+ENV SDL_VIDEO_DRIVER=x11
 
 # Установка сборочных инструментов, зависимостей и утилит для Web VNC
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -92,13 +92,17 @@ case "$cmd" in
         echo "Open your browser at: http://localhost:6080"
         echo "=========================================================="
 
+        export XDG_RUNTIME_DIR="/tmp/runtime-dir"
+        mkdir -p -m 0700 "${XDG_RUNTIME_DIR}"
         export DISPLAY=:99
+        export SDL_VIDEO_DRIVER=x11
+
         Xvfb :99 -screen 0 "${RESOLUTION}x24" -ac +extension GLX +render -noreset >/dev/null 2>&1 &
         sleep 1
 
         openbox >/dev/null 2>&1 &
-        x11vnc -display :99 -forever -nopw -shared -rfbport 5900 -quiet >/dev/null 2>&1 &
-        websockify --web=/usr/share/novnc 6080 localhost:5900 >/dev/null 2>&1 &
+        x11vnc -display :99 -forever -nopw -shared -rfbport 5900 -listen 127.0.0.1 -quiet >/dev/null 2>&1 &
+        websockify --web=/usr/share/novnc 0.0.0.0:6080 localhost:5900 >/dev/null 2>&1 &
 
         echo "Container ready. Running ${binary} --continuous ..."
         exec "$binary" --continuous

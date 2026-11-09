@@ -8,6 +8,8 @@ services:
     environment:
       - EXAMPLE=game_scene
       - RESOLUTION=800x600
+      - SDL_VIDEO_DRIVER=x11
+      - XDG_RUNTIME_DIR=/tmp/runtime-dir
     volumes:
       - ./output:/app/output:z
     command: web
@@ -27,6 +29,8 @@ services:
     environment:
       - EXAMPLE=hello_cube
       - RESOLUTION=800x600
+      - SDL_VIDEO_DRIVER=x11
+      - XDG_RUNTIME_DIR=/tmp/runtime-dir
     volumes:
       - ./output:/app/output:z
     command: web
@@ -40,6 +44,8 @@ services:
     environment:
       - EXAMPLE=renderer_gallery
       - RESOLUTION=800x600
+      - SDL_VIDEO_DRIVER=x11
+      - XDG_RUNTIME_DIR=/tmp/runtime-dir
     volumes:
       - ./output:/app/output:z
     command: web
