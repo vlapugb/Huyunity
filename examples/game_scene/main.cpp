@@ -82,10 +82,10 @@ void addPine(huynity::Engine& engine, const math::Vector3& position, double scal
     }
 }
 
-render::OrthographicCamera3 makeCamera(double yaw, double width) {
+render::OrthographicCamera3 makeCamera(double yaw, double pitch, double width) {
     const auto target = math::translation(math::Vector3{{0.0, -1.0, 34.0}});
     const auto orbit =
-        math::compose(math::rotation(math::RotationAxis::X, -0.58), math::rotation(math::RotationAxis::Y, yaw));
+        math::compose(math::rotation(math::RotationAxis::X, pitch), math::rotation(math::RotationAxis::Y, yaw));
     return {
         .worldToView = math::compose(target, orbit),
         .width = width,
@@ -202,9 +202,10 @@ int main(int argc, char* argv[]) {
 
     double rotorAngle = 0.0;
     double cameraYaw = -0.52;
+    double cameraPitch = -0.58;
     double cameraWidth = 23.0;
     int stepCount = 0;
-    engine.setCamera(makeCamera(cameraYaw, cameraWidth));
+    engine.setCamera(makeCamera(cameraYaw, cameraPitch, cameraWidth));
 
     engine.onUpdate([&](double dt) {
         if (!continuous && ++stepCount >= 10) {
@@ -218,6 +219,18 @@ int main(int argc, char* argv[]) {
             return;
         }
 
+        // Вращение камеры мышью при зажатой левой кнопке
+        if (input.isMouseButtonPressed(window::MouseButton::Left)) {
+            constexpr double mouseSensitivity = 0.006;
+            cameraYaw += input.mouseDeltaX() * mouseSensitivity;
+            cameraPitch = std::clamp(cameraPitch + input.mouseDeltaY() * mouseSensitivity, -1.2, -0.2);
+        }
+
+        // Зум колесом мыши
+        if (std::abs(input.scrollDelta()) > 0.01) {
+            cameraWidth = std::clamp(cameraWidth - input.scrollDelta() * 1.5, 12.0, 32.0);
+        }
+
         if (input.isKeyPressed(window::KeyCode::A) || input.isKeyPressed(window::KeyCode::Left)) {
             cameraYaw -= dt * 0.7;
         }
@@ -225,12 +238,12 @@ int main(int argc, char* argv[]) {
             cameraYaw += dt * 0.7;
         }
         if (input.isKeyPressed(window::KeyCode::W) || input.isKeyPressed(window::KeyCode::Up)) {
-            cameraWidth = std::max(13.0, cameraWidth - dt * 7.0);
+            cameraWidth = std::max(12.0, cameraWidth - dt * 7.0);
         }
         if (input.isKeyPressed(window::KeyCode::S) || input.isKeyPressed(window::KeyCode::Down)) {
-            cameraWidth = std::min(28.0, cameraWidth + dt * 7.0);
+            cameraWidth = std::min(32.0, cameraWidth + dt * 7.0);
         }
-        engine.setCamera(makeCamera(cameraYaw, cameraWidth));
+        engine.setCamera(makeCamera(cameraYaw, cameraPitch, cameraWidth));
 
         const double speed = input.isKeyPressed(window::KeyCode::Space) ? 2.4 : 0.65;
         rotorAngle += dt * speed;

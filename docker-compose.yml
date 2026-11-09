@@ -6,7 +6,7 @@ services:
     ports:
       - "6080:6080"
     environment:
-      - EXAMPLE=game_scene
+      - EXAMPLE=hello_cube
       - RESOLUTION=800x600
       - SDL_VIDEO_DRIVER=x11
       - XDG_RUNTIME_DIR=/tmp/runtime-dir
@@ -14,20 +14,29 @@ services:
       - ./output:/app/output:z
     command: web
 
-  test:
+  cube:
     build: .
     image: huynity:latest
-    container_name: huynity-test
-    command: test
+    container_name: huynity-cube
+    ports:
+      - "6080:6080"
+    environment:
+      - EXAMPLE=hello_cube
+      - RESOLUTION=800x600
+      - SDL_VIDEO_DRIVER=x11
+      - XDG_RUNTIME_DIR=/tmp/runtime-dir
+    volumes:
+      - ./output:/app/output:z
+    command: web
 
-  hello-cube:
+  village:
     build: .
     image: huynity:latest
-    container_name: huynity-hello-cube
+    container_name: huynity-village
     ports:
       - "6081:6080"
     environment:
-      - EXAMPLE=hello_cube
+      - EXAMPLE=game_scene
       - RESOLUTION=800x600
       - SDL_VIDEO_DRIVER=x11
       - XDG_RUNTIME_DIR=/tmp/runtime-dir
@@ -49,3 +58,9 @@ services:
     volumes:
       - ./output:/app/output:z
     command: web
+
+  test:
+    build: .
+    image: huynity:latest
+    container_name: huynity-test
+    command: test
