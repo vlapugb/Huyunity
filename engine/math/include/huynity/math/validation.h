@@ -1,15 +1,17 @@
 #pragma once
 
 #include "huynity/math/point.h"
+#include "huynity/math/vector.h"
 
 #include <algorithm>
+#include <cmath>
 #include <span>
 
-namespace huynity::objectlib::detail {
+namespace huynity::math {
 
 template <std::size_t dimension>
-[[nodiscard]] bool finitePoints(std::span<const math::Point<dimension>> points) noexcept {
-    return std::ranges::all_of(points, [](const auto& p) { return math::isFinite(p); });
+[[nodiscard]] bool finitePoints(std::span<const Point<dimension>> points) noexcept {
+    return std::ranges::all_of(points, Point<dimension>::finite);
 }
 
 template <std::size_t dimension>
@@ -19,15 +21,15 @@ template <std::size_t dimension>
 
 [[nodiscard]] inline long double orientation(const math::Point2& a, const math::Point2& b,
                                              const math::Point2& c) noexcept {
-    const long double abx = static_cast<long double>(b[0]) - a[0];
-    const long double aby = static_cast<long double>(b[1]) - a[1];
-    const long double acx = static_cast<long double>(c[0]) - a[0];
-    const long double acy = static_cast<long double>(c[1]) - a[1];
+    const auto abx = static_cast<long double>(b[0]) - a[0];
+    const auto aby = static_cast<long double>(b[1]) - a[1];
+    const auto acx = static_cast<long double>(c[0]) - a[0];
+    const auto acy = static_cast<long double>(c[1]) - a[1];
     return abx * acy - aby * acx;
 }
 
 [[nodiscard]] inline int sign(long double value) noexcept {
-    return (value > 0) - (value < 0);
+    return int(std::signbit(value));
 }
 
 [[nodiscard]] inline bool onSegment(const math::Point2& p, const math::Point2& a, const math::Point2& b) noexcept {
@@ -37,10 +39,10 @@ template <std::size_t dimension>
 
 [[nodiscard]] inline bool segmentsIntersect(const math::Point2& a, const math::Point2& b, const math::Point2& c,
                                             const math::Point2& d) noexcept {
-    const int abC = sign(orientation(a, b, c));
-    const int abD = sign(orientation(a, b, d));
-    const int cdA = sign(orientation(c, d, a));
-    const int cdB = sign(orientation(c, d, b));
+    const auto abC = sign(orientation(a, b, c));
+    const auto abD = sign(orientation(a, b, d));
+    const auto cdA = sign(orientation(c, d, a));
+    const auto cdB = sign(orientation(c, d, b));
     if (abC * abD < 0 && cdA * cdB < 0) {
         return true;
     }
@@ -56,4 +58,4 @@ template <std::size_t dimension>
     return area;
 }
 
-} // namespace huynity::objectlib::detail
+} // namespace huynity::math
