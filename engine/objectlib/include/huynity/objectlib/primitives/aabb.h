@@ -1,37 +1,45 @@
 #pragma once
 
-#include "huynity/objectlib/detail/validation.h"
+#include "huynity/math/point.h"
 #include "huynity/objectlib/errors.h"
-#include "huynity/objectlib/params/aabb_params.h"
-
-#include <cmath>
-#include <span>
-#include <utility>
+#include "huynity/objectlib/objects.h"
 
 namespace huynity::objectlib {
-
 template <std::size_t dimension>
     requires math::Dimension<dimension>
 class Aabb {
 public:
-    [[nodiscard]] static CreateResult<Aabb> create(AabbParams<dimension> params) {
-        if (!math::isFinite(params.min) || !math::isFinite(params.max)) {
+    struct Params {
+        using Object = Aabb<dimension>;
+        math::Point<dimension> min;
+        math::Point<dimension> max;
+    };
+
+    static constexpr auto Dimension = dimension;
+
+    static constexpr auto Type = ObjectType::Aabb;
+
+    [[nodiscard]] static CreateResult<Aabb> create(Params params) { return create(params.min, params.max); }
+
+    [[nodiscard]] static CreateResult<Aabb> create(math::Point<dimension> min, math::Point<dimension> max) {
+        if (!min.finite() || !max.finite()) {
             return std::unexpected(CreateError{CreateErrorCode::NonFiniteParameter});
         }
         for (std::size_t i = 0; i < dimension; ++i) {
-            if (params.min[i] > params.max[i]) {
+            if (min[i] > max[i]) {
                 return std::unexpected(CreateError{CreateErrorCode::InvalidBounds});
             }
         }
-        return Aabb(params.min, params.max);
+        return Aabb(min, max);
     }
-    [[nodiscard]] Point<dimension> min() const noexcept { return m_min; }
-    [[nodiscard]] Point<dimension> max() const noexcept { return m_max; }
+
+    [[nodiscard]] math::Point<dimension> min() const noexcept { return m_min; }
+    [[nodiscard]] math::Point<dimension> max() const noexcept { return m_max; }
 
 private:
-    Aabb(Point<dimension> min, Point<dimension> max) : m_min{min}, m_max{max} {}
-    Point<dimension> m_min;
-    Point<dimension> m_max;
+    Aabb(math::Point<dimension> min, math::Point<dimension> max) : m_min{min}, m_max{max} {}
+    math::Point<dimension> m_min;
+    math::Point<dimension> m_max;
 };
 
 using Aabb2 = Aabb<2>;

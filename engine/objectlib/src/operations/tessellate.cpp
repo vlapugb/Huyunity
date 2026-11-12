@@ -1,5 +1,8 @@
 #include "huynity/objectlib/operations/tessellate.h"
 
+#include "huynity/math/vector_unsigned.h"
+#include "huynity/objectlib/collections/triangle_mesh.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -37,15 +40,18 @@ GeometryResult<std::size_t> circleSegmentCount(double radius, TessellationOption
 }
 
 template <std::size_t dimension>
-TessellationResult<dimension> makeMesh(TriangleMeshParams<dimension> params) {
+TessellationResult<dimension> makeMesh(typename TriangleMesh<dimension>::Params params) {
     auto mesh = TriangleMesh<dimension>::create(std::move(params));
     if (!mesh) {
+        if (mesh.error().code == CreateErrorCode::InvalidIndex) {
+            return std::unexpected(GeometryError{GeometryErrorCode::InvalidGeometry});
+        }
         return std::unexpected(GeometryError{GeometryErrorCode::NumericalFailure});
     }
     return std::move(*mesh);
 }
 
-GeometryResult<long double> sphereFaceDeviation(const Point3& a, const Point3& b, const Point3& c) {
+GeometryResult<long double> sphereFaceDeviation(const math::Point3& a, const math::Point3& b, const math::Point3& c) {
     std::array<long double, 3> ab{};
     std::array<long double, 3> ac{};
     std::array<long double, 3> normal{};
@@ -71,12 +77,12 @@ PolylineResult<2> sampleCircle(const Circle2& circle, TessellationOptions option
     if (!count) {
         return std::unexpected(count.error());
     }
-    std::vector<Point2> points;
+    std::vector<math::Point2> points;
     points.reserve(*count);
     for (std::size_t i = 0; i < *count; ++i) {
         const auto angle = 2 * std::numbers::pi_v<long double> * i / *count;
-        points.push_back({{static_cast<double>(circle.radius() * std::cos(angle)),
-                           static_cast<double>(circle.radius() * std::sin(angle))}});
+        points.push_back({static_cast<double>(circle.radius() * std::cos(angle)),
+                          static_cast<double>(circle.radius() * std::sin(angle))});
     }
     auto result = Polyline2::create({std::move(points), true});
     if (!result) {
@@ -86,17 +92,20 @@ PolylineResult<2> sampleCircle(const Circle2& circle, TessellationOptions option
 }
 
 TessellationResult<2> tessellate(const Disk2& disk, TessellationOptions options) {
-    auto circle = Circle2::create({disk.radius()});
+    auto circle = Circle2::create(disk.radius());
+    if (!circle) {
+        return std::unexpected(GeometryError{GeometryErrorCode::NumericalFailure});
+    }
     auto contour = sampleCircle(*circle, options);
     if (!contour) {
         return std::unexpected(contour.error());
     }
     const auto points = contour->vertices();
-    std::vector<Point2> positions;
+    std::vector<math::Point2> positions;
     positions.reserve(points.size() + 1);
     positions.push_back({});
     positions.insert(positions.end(), points.begin(), points.end());
-    std::vector<TriangleIndices> triangles;
+    std::vector<math::VectorUnsigned3> triangles;
     triangles.reserve(points.size());
     for (std::size_t i = 0; i < points.size(); ++i) {
         triangles.push_back(
@@ -161,14 +170,15 @@ TessellationResult<3> tessellate(const Sphere3& sphere, TessellationOptions opti
         return std::unexpected(GeometryError{GeometryErrorCode::BudgetExceeded});
     }
     // Subdivide an octahedron; keep unit directions until final scaling.
-    std::vector<Point3> directions{{{0, 0, 1}}, {{0, 0, -1}}, {{1, 0, 0}}, {{0, 1, 0}}, {{-1, 0, 0}}, {{0, -1, 0}}};
-    std::vector<TriangleIndices> triangles{{{0, 2, 3}}, {{0, 3, 4}}, {{0, 4, 5}}, {{0, 5, 2}},
-                                           {{1, 3, 2}}, {{1, 4, 3}}, {{1, 5, 4}}, {{1, 2, 5}}};
+    std::vector<math::Point3> directions{{{0, 0, 1}}, {{0, 0, -1}}, {{1, 0, 0}},
+                                         {{0, 1, 0}}, {{-1, 0, 0}}, {{0, -1, 0}}};
+    std::vector<math::VectorUnsigned3> triangles{{{0, 2, 3}}, {{0, 3, 4}}, {{0, 4, 5}}, {{0, 5, 2}},
+                                                 {{1, 3, 2}}, {{1, 4, 3}}, {{1, 5, 4}}, {{1, 2, 5}}};
     const auto allowedDeviation = static_cast<long double>(options.maxDeviation) / sphere.radius();
     for (;;) {
         bool isPrecise = true;
         for (const auto& triangle : triangles) {
-            const auto& idx = triangle.indices;
+            const auto& idx = triangle;
             auto deviation = sphereFaceDeviation(directions[idx[0]], directions[idx[1]], directions[idx[2]]);
             if (!deviation) {
                 return std::unexpected(deviation.error());
@@ -194,7 +204,7 @@ TessellationResult<3> tessellate(const Sphere3& sphere, TessellationOptions opti
             if (directions.size() >= std::numeric_limits<std::uint32_t>::max()) {
                 return std::unexpected(GeometryError{GeometryErrorCode::BudgetExceeded});
             }
-            Point3 p;
+            math::Point3 p;
             for (std::size_t i = 0; i < 3; ++i) {
                 p[i] = directions[a][i] + directions[b][i];
             }
@@ -202,7 +212,7 @@ TessellationResult<3> tessellate(const Sphere3& sphere, TessellationOptions opti
             if (norm == 0 || !std::isfinite(norm)) {
                 return std::unexpected(GeometryError{GeometryErrorCode::NumericalFailure});
             }
-            for (auto& value : p.coordinates) {
+            for (auto& value : p) {
                 value /= norm;
             }
             const auto index = static_cast<std::uint32_t>(directions.size());
@@ -210,10 +220,12 @@ TessellationResult<3> tessellate(const Sphere3& sphere, TessellationOptions opti
             midpointCache.emplace(key, index);
             return index;
         };
-        std::vector<TriangleIndices> next;
+        std::vector<math::VectorUnsigned3> next;
         next.reserve(triangles.size() * 4);
         for (const auto& triangle : triangles) {
-            const auto [a, b, c] = triangle.indices;
+            const auto a = triangle[0];
+            const auto b = triangle[1];
+            const auto c = triangle[2];
             auto ab = midpoint(a, b);
             auto bc = midpoint(b, c);
             auto ca = midpoint(c, a);
@@ -231,7 +243,7 @@ TessellationResult<3> tessellate(const Sphere3& sphere, TessellationOptions opti
         triangles = std::move(next);
     }
     for (auto& point : directions) {
-        for (auto& coordinate : point.coordinates) {
+        for (auto& coordinate : point) {
             coordinate *= sphere.radius();
         }
     }

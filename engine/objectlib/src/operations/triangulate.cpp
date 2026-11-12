@@ -1,6 +1,7 @@
 #include "huynity/objectlib/operations/triangulate.h"
 
-#include "huynity/objectlib/detail/validation.h"
+#include "huynity/math/validation.h"
+#include "huynity/math/vector_unsigned.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -19,7 +20,7 @@ TessellationResult<2> triangulate(const Polygon2& polygon) {
     }
     std::vector<std::uint32_t> ring(points.size());
     std::iota(ring.begin(), ring.end(), std::uint32_t{0});
-    if (detail::signedAreaTwice(points) < 0) {
+    if (math::signedAreaTwice(points) < 0) {
         std::ranges::reverse(ring);
     }
 
@@ -31,14 +32,14 @@ TessellationResult<2> triangulate(const Polygon2& polygon) {
             const auto a = ring[(i + ring.size() - 1) % ring.size()];
             const auto b = ring[i];
             const auto c = ring[(i + 1) % ring.size()];
-            if (detail::orientation(points[a], points[b], points[c]) == 0) {
+            if (math::orientation(points[a], points[b], points[c]) == 0) {
                 ring.erase(ring.begin() + static_cast<std::ptrdiff_t>(i));
                 hasRemovedVertex = true;
                 break;
             }
         }
     }
-    std::vector<TriangleIndices> triangles;
+    std::vector<math::VectorUnsigned3> triangles;
     triangles.reserve(ring.size() - 2);
     while (ring.size() > 3) {
         bool hasFoundEar = false;
@@ -46,7 +47,7 @@ TessellationResult<2> triangulate(const Polygon2& polygon) {
             const auto a = ring[(i + ring.size() - 1) % ring.size()];
             const auto b = ring[i];
             const auto c = ring[(i + 1) % ring.size()];
-            if (detail::orientation(points[a], points[b], points[c]) <= 0) {
+            if (math::orientation(points[a], points[b], points[c]) <= 0) {
                 continue;
             }
             bool isOccupied = false;
@@ -55,9 +56,9 @@ TessellationResult<2> triangulate(const Polygon2& polygon) {
                     continue;
                 }
                 const auto& p = points[other];
-                if (detail::orientation(points[a], points[b], p) >= 0 &&
-                    detail::orientation(points[b], points[c], p) >= 0 &&
-                    detail::orientation(points[c], points[a], p) >= 0) {
+                if (math::orientation(points[a], points[b], p) >= 0 &&
+                    math::orientation(points[b], points[c], p) >= 0 &&
+                    math::orientation(points[c], points[a], p) >= 0) {
                     isOccupied = true;
                     break;
                 }
@@ -74,11 +75,11 @@ TessellationResult<2> triangulate(const Polygon2& polygon) {
             return std::unexpected(GeometryError{GeometryErrorCode::NumericalFailure});
         }
     }
-    if (detail::orientation(points[ring[0]], points[ring[1]], points[ring[2]]) <= 0) {
+    if (math::orientation(points[ring[0]], points[ring[1]], points[ring[2]]) <= 0) {
         return std::unexpected(GeometryError{GeometryErrorCode::NumericalFailure});
     }
     triangles.push_back({{ring[0], ring[1], ring[2]}});
-    auto mesh = TriangleMesh2::create({std::vector<Point2>{points.begin(), points.end()}, std::move(triangles)});
+    auto mesh = TriangleMesh2::create({std::vector<math::Point2>{points.begin(), points.end()}, std::move(triangles)});
     if (!mesh) {
         return std::unexpected(GeometryError{GeometryErrorCode::InvalidGeometry});
     }
