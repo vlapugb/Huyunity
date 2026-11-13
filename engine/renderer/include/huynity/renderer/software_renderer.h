@@ -8,8 +8,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <expected>
 #include <limits>
+#include <list>
 #include <optional>
 #include <span>
 #include <tuple>
@@ -134,21 +136,39 @@ struct ViewDirectionalLight {
     double intensity{};
 };
 
+[[nodiscard]] inline render_contracts::TriangleIndices readTriangle(std::span<const std::byte> bytes,
+                                                                    std::size_t index) noexcept {
+    render_contracts::TriangleIndices triangle;
+    std::memcpy(&triangle, bytes.data() + index * sizeof(triangle), sizeof(triangle));
+    return triangle;
+}
+
 /// @brief Кеш производных shading-данных на версию mesh-ресурса.
 ///
 /// Нормали граней вычисляются один раз для неизменного ресурса: ключом служат
-/// владелец ресурса и адрес данных вершин. Запись удерживает shared_ptr владельца,
-/// поэтому адрес не может быть переиспользован другим ресурсом, пока запись жива.
+/// владелец ресурса, адреса и размеры массивов вершин и треугольников. Кеш не продлевает
+/// жизнь владельца; записи истёкших ресурсов удаляются перед следующим запросом.
+/// Выданные результаты сохраняют адрес и содержимое, пока жив владеющий ресурс.
+/// Без владеющего owner нормали пересчитываются во временный буфер; его результат
+/// действителен до следующего успешного запроса того же вида без владельца.
 class ShadingDataCache {
 public:
     [[nodiscard]] std::expected<const std::vector<math::Vector3>*, RenderError>
     faceNormals(const render_contracts::MeshResource3& resource) {
+        removeExpiredEntries();
+        if (resource.triangles.size() % sizeof(render_contracts::TriangleIndices) != 0) {
+            return std::unexpected(RenderError::InvalidResource);
+        }
         const std::size_t triangleCount = resource.triangles.size() / sizeof(render_contracts::TriangleIndices);
-        for (const auto& entry : m_entries) {
-            if (entry.owner.get() == resource.owner.get() && entry.positions == resource.positions.data() &&
-                entry.triangleCount == triangleCount) {
-                ++m_hits;
-                return &entry.normals;
+        const bool hasOwner = resource.owner.use_count() != 0;
+        if (hasOwner) {
+            for (const auto& entry : m_entries) {
+                if (!entry.owner.owner_before(resource.owner) && !resource.owner.owner_before(entry.owner) &&
+                    entry.positions == resource.positions.data() && entry.triangles == resource.triangles.data() &&
+                    entry.vertexCount == resource.positions.size() && entry.triangleCount == triangleCount) {
+                    ++m_hits;
+                    return &entry.normals;
+                }
             }
         }
         auto normals = computeNormals(resource, triangleCount);
@@ -156,20 +176,32 @@ public:
             return std::unexpected(normals.error());
         }
         ++m_misses;
-        m_entries.push_back({resource.owner, resource.positions.data(), triangleCount, std::move(*normals)});
+        if (!hasOwner) {
+            m_uncachedFaceNormals = std::move(*normals);
+            return &m_uncachedFaceNormals;
+        }
+        m_entries.push_back({resource.owner, resource.positions.data(), resource.triangles.data(),
+                             resource.positions.size(), triangleCount, std::move(*normals)});
         return &m_entries.back().normals;
     }
 
     [[nodiscard]] std::expected<const std::vector<math::Vector3>*, RenderError>
     vertexNormals(const render_contracts::MeshResource3& resource) {
+        removeExpiredEntries();
+        if (resource.triangles.size() % sizeof(render_contracts::TriangleIndices) != 0) {
+            return std::unexpected(RenderError::InvalidResource);
+        }
         const std::size_t triangleCount = resource.triangles.size() / sizeof(render_contracts::TriangleIndices);
         const std::size_t vertexCount = resource.positions.size();
-        for (const auto& entry : m_vertexEntries) {
-            if (entry.owner.get() == resource.owner.get() && entry.positions == resource.positions.data() &&
-                entry.triangles == resource.triangles.data() && entry.vertexCount == vertexCount &&
-                entry.triangleCount == triangleCount) {
-                ++m_hits;
-                return &entry.normals;
+        const bool hasOwner = resource.owner.use_count() != 0;
+        if (hasOwner) {
+            for (const auto& entry : m_vertexEntries) {
+                if (!entry.owner.owner_before(resource.owner) && !resource.owner.owner_before(entry.owner) &&
+                    entry.positions == resource.positions.data() && entry.triangles == resource.triangles.data() &&
+                    entry.vertexCount == vertexCount && entry.triangleCount == triangleCount) {
+                    ++m_hits;
+                    return &entry.normals;
+                }
             }
         }
         auto normals = computeVertexNormals(resource, triangleCount, vertexCount);
@@ -177,6 +209,10 @@ public:
             return std::unexpected(normals.error());
         }
         ++m_misses;
+        if (!hasOwner) {
+            m_uncachedVertexNormals = std::move(*normals);
+            return &m_uncachedVertexNormals;
+        }
         m_vertexEntries.push_back({resource.owner, resource.positions.data(), resource.triangles.data(), vertexCount,
                                    triangleCount, std::move(*normals)});
         return &m_vertexEntries.back().normals;
@@ -187,14 +223,7 @@ public:
 
 private:
     struct Entry {
-        std::shared_ptr<const void> owner;
-        const math::Point3* positions;
-        std::size_t triangleCount;
-        std::vector<math::Vector3> normals;
-    };
-
-    struct VertexEntry {
-        std::shared_ptr<const void> owner;
+        std::weak_ptr<const void> owner;
         const math::Point3* positions;
         const std::byte* triangles;
         std::size_t vertexCount;
@@ -202,13 +231,18 @@ private:
         std::vector<math::Vector3> normals;
     };
 
+    void removeExpiredEntries() {
+        const auto expired = [](const auto& entry) { return entry.owner.expired(); };
+        std::erase_if(m_entries, expired);
+        std::erase_if(m_vertexEntries, expired);
+    }
+
     [[nodiscard]] static std::expected<std::vector<math::Vector3>, RenderError>
     computeNormals(const render_contracts::MeshResource3& resource, std::size_t triangleCount) {
-        const auto* triangles = reinterpret_cast<const render_contracts::TriangleIndices*>(resource.triangles.data());
         std::vector<math::Vector3> normals;
         normals.reserve(triangleCount);
         for (std::size_t index = 0; index < triangleCount; ++index) {
-            const auto& triangle = triangles[index];
+            const auto triangle = readTriangle(resource.triangles, index);
             if (triangle.a >= resource.positions.size() || triangle.b >= resource.positions.size() ||
                 triangle.c >= resource.positions.size()) {
                 return std::unexpected(RenderError::InvalidResource);
@@ -223,10 +257,9 @@ private:
     [[nodiscard]] static std::expected<std::vector<math::Vector3>, RenderError>
     computeVertexNormals(const render_contracts::MeshResource3& resource, std::size_t triangleCount,
                          std::size_t vertexCount) {
-        const auto* triangles = reinterpret_cast<const render_contracts::TriangleIndices*>(resource.triangles.data());
         std::vector<math::Vector3> normals(vertexCount, math::Vector3{});
         for (std::size_t index = 0; index < triangleCount; ++index) {
-            const auto& triangle = triangles[index];
+            const auto triangle = readTriangle(resource.triangles, index);
             if (triangle.a >= vertexCount || triangle.b >= vertexCount || triangle.c >= vertexCount) {
                 return std::unexpected(RenderError::InvalidResource);
             }
@@ -242,8 +275,10 @@ private:
         return normals;
     }
 
-    std::vector<Entry> m_entries;
-    std::vector<VertexEntry> m_vertexEntries;
+    std::list<Entry> m_entries;
+    std::list<Entry> m_vertexEntries;
+    std::vector<math::Vector3> m_uncachedFaceNormals;
+    std::vector<math::Vector3> m_uncachedVertexNormals;
     std::size_t m_hits{};
     std::size_t m_misses{};
 };
@@ -370,16 +405,13 @@ inline void writePixel(image::ImageBuffer& framebuffer, std::size_t x, std::size
 }
 
 inline void clear(image::ImageBuffer& framebuffer, const render_contracts::Color& color) noexcept {
-    const std::byte r = toByte(color.red);
-    const std::byte g = toByte(color.green);
-    const std::byte b = toByte(color.blue);
-    const std::byte a = toByte(color.alpha);
-    const std::uint32_t packed = (static_cast<std::uint32_t>(a) << 24) | (static_cast<std::uint32_t>(b) << 16) |
-                                 (static_cast<std::uint32_t>(g) << 8) | static_cast<std::uint32_t>(r);
+    const std::array<std::byte, 4> pixel{toByte(color.red), toByte(color.green), toByte(color.blue),
+                                         toByte(color.alpha)};
     for (std::size_t y = 0; y < framebuffer.height(); ++y) {
         auto row = framebuffer.row(y);
-        auto* pixels = reinterpret_cast<std::uint32_t*>(row.data());
-        std::fill_n(pixels, framebuffer.width(), packed);
+        for (std::size_t x = 0; x < framebuffer.width(); ++x) {
+            std::memcpy(row.data() + x * pixel.size(), pixel.data(), pixel.size());
+        }
     }
 }
 
@@ -780,7 +812,7 @@ inline std::expected<void, RenderError> renderWorld3D(const render_contracts::Re
         if (item.resource >= snapshot.resources3.size()) {
             return std::unexpected(RenderError::InvalidResource);
         }
-        if (item.material >= snapshot.materials.size()) {
+        if (item.material >= snapshot.materials.size() || !snapshot.materials[item.material]) {
             return std::unexpected(RenderError::InvalidMaterial);
         }
         const auto& resource = snapshot.resources3[item.resource];
@@ -805,9 +837,8 @@ inline std::expected<void, RenderError> renderWorld3D(const render_contracts::Re
             faceNormals = *normals;
         }
         const std::size_t triangleCount = resource.triangles.size() / sizeof(render_contracts::TriangleIndices);
-        const auto* triangles = reinterpret_cast<const render_contracts::TriangleIndices*>(resource.triangles.data());
         for (std::size_t index = 0; index < triangleCount; ++index) {
-            const auto& triangle = triangles[index];
+            const auto triangle = readTriangle(resource.triangles, index);
             const auto viewFirst = math::transformPoint(localToView, resource.positions[triangle.a]);
             const auto viewSecond = math::transformPoint(localToView, resource.positions[triangle.b]);
             const auto viewThird = math::transformPoint(localToView, resource.positions[triangle.c]);
@@ -1088,21 +1119,23 @@ inline std::expected<void, RenderError> render2DPass(const render_contracts::Ren
         if (item->resource >= snapshot.resources2.size()) {
             return std::unexpected(RenderError::InvalidResource);
         }
-        if (item->material >= snapshot.materials.size()) {
+        if (item->material >= snapshot.materials.size() || !snapshot.materials[item->material]) {
             return std::unexpected(RenderError::InvalidMaterial);
+        }
+        const auto& resource = snapshot.resources2[item->resource];
+        if (resource.triangles.size() % sizeof(render_contracts::TriangleIndices) != 0) {
+            return std::unexpected(RenderError::InvalidResource);
         }
         if (camera && !isCameraValid) {
             continue;
         }
-        const auto& resource = snapshot.resources2[item->resource];
         const auto& material = *snapshot.materials[item->material];
         const bool isTextured =
             (material.texture != nullptr) && (resource.texCoords.size() == resource.positions.size());
         const auto localToView = camera ? math::compose(camera->worldToView, item->localToWorld) : item->localToWorld;
         const std::size_t triangleCount = resource.triangles.size() / sizeof(render_contracts::TriangleIndices);
-        const auto* triangles = reinterpret_cast<const render_contracts::TriangleIndices*>(resource.triangles.data());
         for (std::size_t index = 0; index < triangleCount; ++index) {
-            const auto& triangle = triangles[index];
+            const auto triangle = readTriangle(resource.triangles, index);
             if (triangle.a >= resource.positions.size() || triangle.b >= resource.positions.size() ||
                 triangle.c >= resource.positions.size()) {
                 return std::unexpected(RenderError::InvalidResource);
