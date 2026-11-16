@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "50bae1e2-fedd-4152-a3e1-c4e1740be0ed",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/vladimir/Documents/study/Huynity/.archify/architecture-huynity-20261117-014248/candidate.json",
+  "output": "/home/vladimir/Documents/study/Huynity/.archify/architecture-huynity-20261117-014248/huynity.html",
+  "specification": {
+    "sha256": "973f138534b06b03464382eb204f3e499a9bb3d5a0eb84340bd87700cd214a76",
+    "bytes": 49207
+  },
+  "artifact": {
+    "sha256": "7d6294626aa6ab6554b17363dc88c0bf9ba32a5a70af10d053bae439df7a2d70",
+    "bytes": 860182
+  }
+}

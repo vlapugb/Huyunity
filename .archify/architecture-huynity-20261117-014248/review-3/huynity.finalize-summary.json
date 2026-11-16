@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/vladimir/Documents/study/Huynity/.archify/architecture-huynity-20261117-014248/candidate.json",
+    "sha256": "973f138534b06b03464382eb204f3e499a9bb3d5a0eb84340bd87700cd214a76",
+    "bytes": 49207
+  },
+  "artifact": {
+    "path": "/home/vladimir/Documents/study/Huynity/.archify/architecture-huynity-20261117-014248/huynity.html",
+    "sha256": "7d6294626aa6ab6554b17363dc88c0bf9ba32a5a70af10d053bae439df7a2d70",
+    "bytes": 860182
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/vladimir/Documents/study/Huynity/.archify/architecture-huynity-20261117-014248/review-3/huynity.finalize.json",
+    "summaryReceipt": "/home/vladimir/Documents/study/Huynity/.archify/architecture-huynity-20261117-014248/review-3/huynity.finalize-summary.json",
+    "browserCheckReceipt": "/home/vladimir/Documents/study/Huynity/.archify/architecture-huynity-20261117-014248/review-3/huynity.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-16T22:48:52.752Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 4660,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

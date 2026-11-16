@@ -4,8 +4,8 @@
 
 Huynity — C++23-проект геометрической библиотеки и движка с программным рендерингом.
 Реализованы Math, базовая Object Library, ImageBuffer, Render Contracts, Core, fixed-step
-Runtime, SoftwareRenderer, адаптер Renderer Actor и сквозные интеграционные тесты; оконный адаптер
-и редактор пока описаны в архитектурных планах.
+Runtime, SoftwareRenderer и GlRenderer, оконный адаптер, тестовый адаптер Renderer Actor
+и сквозные интеграционные тесты; редактор пока описан в архитектурных планах.
 
 ```text
 Huynity/
@@ -37,7 +37,8 @@ Huynity/
 │   ├── core/                         # реализовано: Scene, ObjectId, команды, read-only view
 │   │   ├── include/huynity/core/
 │   │   └── tests/
-│   ├── renderer/                     # реализовано: программный рендеринг (3D, 2D, HUD, shading, кеш)
+│   ├── renderer/                     # реализовано: GlRenderer (OpenGL 3.3 Core, кеши VBO/текстур по id+версии)
+│   │                                 # и эталонный синхронный SoftwareRenderer (3D, 2D, HUD, shading, кеш)
 │   │   ├── include/huynity/renderer/
 │   │   └── tests/
 │   └── runtime/                      # реализовано: fixed-step update, frame pipeline, пул и главный цикл
@@ -54,12 +55,12 @@ Huynity/
 ├── apps/editor/                      # план: main и UI
 ├── tests/integration/                # реализовано: 2D/3D сценарии, нагрузочные профили, baseline
 ├── examples/
-│   ├── first_person_corridor/        # кольцевой коридор со стенами, потолком, светом и камерой от первого лица
+│   ├── canyon_observatory/           # обсерватория в красном каньоне на закате с мостом и видом от первого лица
 │   ├── game_scene/                   # изометрическая деревня с мельницей, прудом и управлением камерой
-│   ├── hello_cube/                   # минимальный пример игры на фасаде Engine
+│   ├── hello_cube/                   # демонстрация фасада Engine: текстуры, Гуро, каркас и тени
 │   ├── objectlib/                    # работающий пример геометрии Object Library
 │   ├── renderer_gallery/             # демонстрация wireframe, shading и текстурирования
-│   ├── third_person_arena/           # 3D арена с ровером и плавной преследующей камерой от третьего лица
+│   ├── sunlit_sanctuary/             # солнечное античное святилище на острове с видом от первого лица
 │   └── window_demo/                  # интерактивный пример окна и рендеринга
 ├── tools/scripts/build.sh            # настройка, сборка и ссылка compile_commands.json
 └── docs/                             # архитектура, API, UML; diagrams/ — SVG и DOT
@@ -74,7 +75,7 @@ Huynity/
   `huynity_runtime` / `huynity::runtime`,
   `huynity_objectlib` / `huynity::objectlib`, `huynity_window` / `huynity::window`,
   а также `<component>_tests`, `huynity_objectlib_example`, `huynity_window_demo`, `huynity_hello_cube`,
-  `huynity_renderer_gallery`, `huynity_game_scene`, `huynity_first_person_corridor` и `huynity_third_person_arena`. У каждого компонента свой CMakeLists.txt.
+  `huynity_renderer_gallery`, `huynity_game_scene`, `huynity_sunlit_sanctuary` и `huynity_canyon_observatory`. У каждого компонента свой CMakeLists.txt.
   Image не имеет зависимостей движка; Runtime зависит от Render Contracts и Image;
   Render Contracts зависит только от Math и STL.
 - Object Library зависит только от Math и STL. Она владеет геометрическими значениями,
@@ -111,7 +112,7 @@ Huynity/
 ## Setup
 
 - Нужны компилятор и стандартная библиотека с C++23 и std::expected, CMake 3.20+,
-  Ninja и clang-format 20. Object Library и её тесты не требуют внешних библиотек.
+  Ninja и clang-format 20. Для Renderer нужны заголовки и библиотека OpenGL (Fedora: `mesa-libGL-devel`; Ubuntu: `libgl1-mesa-dev`). Object Library и её тесты не требуют внешних библиотек.
 - SDL3 — опциональная зависимость нативного окна. На Fedora установите `SDL3-devel`;
   без неё `huynity_window` собирается только с HeadlessWindow. При ошибке инициализации
   видеоокружения фабрика выводит причину и также использует HeadlessWindow.

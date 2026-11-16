@@ -1,0 +1,4 @@
+Evidence snapshot of current working-tree source files; original repository HEAD: 359cc36e1909ff9de96bb758f0ee8bf9b1e334a5
+Snapshot revision: a9cb1777d342245a24ab49f906196143cf09452a
+Restore: git clone sources.bundle /tmp/huynity-evidence
+Original working-tree .git and commits were not modified.
