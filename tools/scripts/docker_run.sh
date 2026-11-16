@@ -65,12 +65,12 @@ case "$cmd" in
         $0 web hello_cube
         ;;
 
-    arena|third_person|third_person_arena)
-        $0 web third_person_arena
+    sanctuary|sunlit_sanctuary)
+        $0 web sunlit_sanctuary
         ;;
 
-    corridor|first_person|first_person_corridor)
-        $0 web first_person_corridor
+    observatory|canyon_observatory)
+        $0 web canyon_observatory
         ;;
 
     gallery)

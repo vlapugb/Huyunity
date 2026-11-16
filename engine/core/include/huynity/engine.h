@@ -28,6 +28,10 @@ using TypedParams = ParamsFor<kind>;
 
 } // namespace huynity::objectlib
 
+namespace huynity::renderer {
+class GlRenderer;
+}
+
 namespace huynity {
 
 /**
@@ -252,6 +256,8 @@ public:
      */
     void step(double dt);
 
+    [[nodiscard]] std::unique_ptr<image::ImageBuffer> captureFrame();
+
     /**
      * @brief Запускает главный цикл выполнения движка.
      */
@@ -320,6 +326,7 @@ private:
     runtime::FramePipeline m_pipeline;
     runtime::FixedStepUpdate m_fixedUpdate;
     renderer::SoftwareRenderer m_renderer;
+    std::unique_ptr<renderer::GlRenderer> m_glRenderer;
     adapters::window::InputState m_inputState;
     std::optional<render_contracts::Camera3> m_camera3;
     std::optional<render_contracts::Camera2> m_camera2;

@@ -67,6 +67,13 @@ public:
      */
     [[nodiscard]] virtual std::unique_ptr<image::ImageBuffer>
     present(std::unique_ptr<image::ImageBuffer> framebuffer) override = 0;
+
+    using GlProcResolver = void* (*)(const char*);
+
+    [[nodiscard]] virtual bool hasGpuSurface() const noexcept { return false; }
+    [[nodiscard]] virtual bool makeCurrent() noexcept { return false; }
+    virtual void swapBuffers() noexcept {}
+    [[nodiscard]] virtual GlProcResolver glProcResolver() const noexcept { return nullptr; }
 };
 
 } // namespace huynity::adapters::window

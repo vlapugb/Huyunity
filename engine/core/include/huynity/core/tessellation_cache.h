@@ -3,6 +3,7 @@
 #include "huynity/objectlib/operations/tessellate.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -26,6 +27,31 @@ public:
         if (cached != m_entries.end()) {
             ++m_cacheHits;
             return cached->tessellation;
+        }
+
+        if (const auto* mesh3 = std::get_if<objectlib::TriangleMesh3>(geometry.get())) {
+            ++m_calculations;
+            if (!std::isfinite(options.maxDeviation) || options.maxDeviation <= 0 || options.maxPrimitiveCount == 0) {
+                return std::unexpected(objectlib::GeometryError{objectlib::GeometryErrorCode::InvalidOptions});
+            }
+            if (mesh3->triangles().size() > options.maxPrimitiveCount) {
+                return std::unexpected(objectlib::GeometryError{objectlib::GeometryErrorCode::BudgetExceeded});
+            }
+            auto resource = std::make_shared<const objectlib::TessellatedGeometry>(*mesh3);
+            m_entries.push_back({std::move(geometry), geometryVersion, options, resource});
+            return resource;
+        }
+        if (const auto* mesh2 = std::get_if<objectlib::TriangleMesh2>(geometry.get())) {
+            ++m_calculations;
+            if (!std::isfinite(options.maxDeviation) || options.maxDeviation <= 0 || options.maxPrimitiveCount == 0) {
+                return std::unexpected(objectlib::GeometryError{objectlib::GeometryErrorCode::InvalidOptions});
+            }
+            if (mesh2->triangles().size() > options.maxPrimitiveCount) {
+                return std::unexpected(objectlib::GeometryError{objectlib::GeometryErrorCode::BudgetExceeded});
+            }
+            auto resource = std::make_shared<const objectlib::TessellatedGeometry>(*mesh2);
+            m_entries.push_back({std::move(geometry), geometryVersion, options, resource});
+            return resource;
         }
 
         auto calculated = objectlib::tessellate(*geometry, options);

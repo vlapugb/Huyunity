@@ -12,6 +12,7 @@
 #include <optional>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -23,6 +24,11 @@ struct PreparedDraw3 {
     math::Transform3 localToWorld;
     std::shared_ptr<const render_contracts::Material> material;
     bool wireframe{false};
+    render_contracts::ShadingModel shading{render_contracts::ShadingModel::Flat};
+    bool backfaceCulling{true};
+    bool castShadow{true};
+    bool receiveShadow{true};
+    std::shared_ptr<const std::vector<math::Point2>> texCoords;
 };
 
 struct PreparedDraw2 {
@@ -33,6 +39,7 @@ struct PreparedDraw2 {
     std::int32_t order{};
     double alpha{1};
     bool wireframe{false};
+    std::shared_ptr<const std::vector<math::Point2>> texCoords;
 };
 
 struct WorldDrawList3 {
@@ -72,7 +79,8 @@ public:
 
     [[nodiscard]] static Result<WorldDrawList3> prepareWorld3D(Scene& scene, render_contracts::Camera3 camera,
                                                                render_contracts::Lighting3 lighting = {},
-                                                               objectlib::TessellationOptions options = {}) {
+                                                               objectlib::TessellationOptions options = {},
+                                                               double aspect = 1.0) {
         auto spatial = scene.refreshSpatialState();
         if (!spatial) {
             return std::unexpected(spatial.error());
@@ -87,14 +95,25 @@ public:
                 continue;
             }
             const auto& bounds = std::get<objectlib::Aabb3>(*instance.worldBounds);
-            if (!isVisible(bounds, worldToView, result.camera)) {
+            const bool inCamera = isVisible(bounds, worldToView, result.camera, aspect);
+            bool inShadowCasterVolume = false;
+            if (!inCamera && result.lighting.shadows.enabled && instance.castShadow) {
+                const double pad = result.lighting.shadows.extent + result.lighting.shadows.depthRange * 0.5;
+                const auto& center = result.lighting.shadows.center;
+                inShadowCasterVolume = bounds.max()[0] >= center[0] - pad && bounds.min()[0] <= center[0] + pad &&
+                                       bounds.max()[1] >= center[1] - pad && bounds.min()[1] <= center[1] + pad &&
+                                       bounds.max()[2] >= center[2] - pad && bounds.min()[2] <= center[2] + pad;
+            }
+            if (!inCamera && !inShadowCasterVolume) {
                 continue;
             }
             auto geometry = scene.tessellation(instance.id, options);
             if (!geometry) {
                 return std::unexpected(geometry.error());
             }
-            result.drawItems.push_back({std::move(*geometry), *transform, instance.material, instance.wireframe});
+            result.drawItems.push_back({std::move(*geometry), *transform, instance.material, instance.wireframe,
+                                        instance.shading, instance.backfaceCulling, instance.castShadow,
+                                        instance.receiveShadow, instance.texCoords});
         }
         return result;
     }
@@ -123,7 +142,7 @@ public:
             }
             const double alpha = instance.material == nullptr ? 1 : instance.material->color.alpha;
             result.drawItems.push_back({std::move(*geometry), *transform, instance.material, instance.layer,
-                                        instance.order, alpha, instance.wireframe});
+                                        instance.order, alpha, instance.wireframe, instance.texCoords});
         }
         return result;
     }
@@ -142,7 +161,7 @@ public:
             }
             const double alpha = instance.material == nullptr ? 1 : instance.material->color.alpha;
             result.drawItems.push_back({std::move(*geometry), *transform, instance.material, instance.layer,
-                                        instance.order, alpha, instance.wireframe});
+                                        instance.order, alpha, instance.wireframe, instance.texCoords});
         }
         std::stable_sort(result.drawItems.begin(), result.drawItems.end(), [](const auto& first, const auto& second) {
             return std::tie(first.layer, first.order) < std::tie(second.layer, second.order);
@@ -150,7 +169,8 @@ public:
         return result;
     }
 
-    [[nodiscard]] static Result<PreparedPasses> preparePasses(Scene& scene, const PassesConfig& config) {
+    [[nodiscard]] static Result<PreparedPasses> preparePasses(Scene& scene, const PassesConfig& config,
+                                                              double aspect = 1.0) {
         PreparedPasses result;
         auto appendWorld2 = [&]() -> std::expected<void, objectlib::GeometryError> {
             if (!config.camera2) {
@@ -170,7 +190,7 @@ public:
             }
         }
         if (config.camera3) {
-            auto prepared = prepareWorld3D(scene, *config.camera3, config.lighting, config.tessellation);
+            auto prepared = prepareWorld3D(scene, *config.camera3, config.lighting, config.tessellation, aspect);
             if (!prepared) {
                 return std::unexpected(prepared.error());
             }
@@ -194,7 +214,9 @@ public:
 
     [[nodiscard]] static Result<render_contracts::RenderSnapshot>
     prepareSnapshot(Scene& scene, const PassesConfig& config, std::size_t imageWidth, std::size_t imageHeight) {
-        auto prepared = preparePasses(scene, config);
+        const double aspect =
+            imageHeight > 0 ? static_cast<double>(imageWidth) / static_cast<double>(imageHeight) : 1.0;
+        auto prepared = preparePasses(scene, config, aspect);
         if (!prepared) {
             return std::unexpected(prepared.error());
         }
@@ -202,8 +224,9 @@ public:
         result.imageWidth = imageWidth;
         result.imageHeight = imageHeight;
         result.materials.push_back(std::make_shared<const render_contracts::Material>());
+        SnapshotIndices indices;
         for (auto& pass : prepared->passes) {
-            auto appended = appendSnapshotPass(pass, result);
+            auto appended = appendSnapshotPass(pass, result, indices);
             if (!appended) {
                 return std::unexpected(appended.error());
             }
@@ -212,22 +235,62 @@ public:
     }
 
 private:
+    struct MeshKey {
+        const void* geometry{};
+        const void* texCoords{};
+        bool operator==(const MeshKey&) const = default;
+    };
+    struct MeshKeyHash {
+        std::size_t operator()(const MeshKey& key) const noexcept {
+            const auto first = std::hash<const void*>{}(key.geometry);
+            return first ^ (std::hash<const void*>{}(key.texCoords) + 0x9e3779b9 + (first << 6) + (first >> 2));
+        }
+    };
+    struct SnapshotIndices {
+        std::unordered_map<const render_contracts::Material*, std::size_t> materials;
+        std::unordered_map<MeshKey, std::size_t, MeshKeyHash> meshes3;
+        std::unordered_map<MeshKey, std::size_t, MeshKeyHash> meshes2;
+    };
+
+    [[nodiscard]] static std::uint64_t pointerId(const void* first, const void* second = nullptr) {
+        const auto firstValue = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(first));
+        const auto secondValue = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(second));
+        return firstValue ^ (secondValue + 0x9e3779b97f4a7c15ULL + (firstValue << 6) + (firstValue >> 2));
+    }
+
     [[nodiscard]] static render_contracts::MaterialIndex
     materialIndex(const std::shared_ptr<const render_contracts::Material>& material,
-                  render_contracts::RenderSnapshot& snapshot) {
+                  render_contracts::RenderSnapshot& snapshot, SnapshotIndices& indices) {
         if (material == nullptr) {
             return 0;
         }
-        const auto found = std::find(snapshot.materials.begin(), snapshot.materials.end(), material);
-        if (found != snapshot.materials.end()) {
-            return static_cast<std::size_t>(found - snapshot.materials.begin());
+        if (const auto found = indices.materials.find(material.get()); found != indices.materials.end()) {
+            return found->second;
         }
-        snapshot.materials.push_back(material);
+        snapshot.materials.push_back(withTextureIdentity(material));
+        indices.materials.emplace(material.get(), snapshot.materials.size() - 1);
         return snapshot.materials.size() - 1;
     }
 
+    /// @brief Присваивает текстуре стабильный идентификатор при первом попадании в снимок.
+    ///
+    /// ImageBuffer неизменяем (shared_ptr<const>), поэтому замена изображения — это
+    /// уже другой textureId; версия остаётся прежней, а смена пары (textureId,
+    /// textureVersion) сигнализирует бэкенду о перезагрузке текстуры. Материал
+    /// копируется, чтобы не менять const-оригинал в сцене.
+    [[nodiscard]] static std::shared_ptr<const render_contracts::Material>
+    withTextureIdentity(const std::shared_ptr<const render_contracts::Material>& material) {
+        if (material->texture == nullptr || material->textureId != 0) {
+            return material;
+        }
+        auto identified = std::make_shared<render_contracts::Material>(*material);
+        identified->textureId = pointerId(material->texture.get());
+        identified->textureVersion = 1;
+        return identified;
+    }
+
     [[nodiscard]] static std::expected<void, objectlib::GeometryError>
-    appendSnapshotPass(PreparedPass& pass, render_contracts::RenderSnapshot& snapshot) {
+    appendSnapshotPass(PreparedPass& pass, render_contracts::RenderSnapshot& snapshot, SnapshotIndices& indices) {
         return std::visit(
             [&](auto& source) -> std::expected<void, objectlib::GeometryError> {
                 using PassType = std::decay_t<decltype(source)>;
@@ -239,22 +302,27 @@ private:
                             return std::unexpected(
                                 objectlib::GeometryError{objectlib::GeometryErrorCode::UnsupportedOperation});
                         }
-                        const auto found =
-                            std::find_if(snapshot.resources3.begin(), snapshot.resources3.end(),
-                                         [&](const auto& resource) { return resource.owner == draw.geometry; });
-                        const auto index = found == snapshot.resources3.end()
-                                               ? snapshot.resources3.size()
-                                               : static_cast<std::size_t>(found - snapshot.resources3.begin());
-                        if (found == snapshot.resources3.end()) {
+                        const MeshKey key{draw.geometry.get(), draw.texCoords.get()};
+                        const auto found = indices.meshes3.find(key);
+                        const auto index = found == indices.meshes3.end() ? snapshot.resources3.size() : found->second;
+                        if (found == indices.meshes3.end()) {
                             render_contracts::MeshResource3 resource;
                             resource.owner = draw.geometry;
                             resource.positions = mesh->positions();
                             const auto triangles = mesh->triangles();
                             resource.triangles = std::as_bytes(triangles);
+                            if (draw.texCoords && draw.texCoords->size() == mesh->positions().size()) {
+                                resource.texCoords = *draw.texCoords;
+                                resource.texCoordsOwner = draw.texCoords;
+                            }
+                            resource.resourceId = pointerId(key.geometry, key.texCoords);
+                            resource.version = 1;
                             snapshot.resources3.push_back(resource);
+                            indices.meshes3.emplace(key, index);
                         }
                         target.drawItems.push_back(
-                            {index, draw.localToWorld, materialIndex(draw.material, snapshot), true, draw.wireframe});
+                            {index, draw.localToWorld, materialIndex(draw.material, snapshot, indices),
+                             draw.backfaceCulling, draw.wireframe, draw.shading, draw.castShadow, draw.receiveShadow});
                     }
                     snapshot.passes.push_back(std::move(target));
                 } else {
@@ -265,22 +333,26 @@ private:
                             return std::unexpected(
                                 objectlib::GeometryError{objectlib::GeometryErrorCode::UnsupportedOperation});
                         }
-                        const auto found =
-                            std::find_if(snapshot.resources2.begin(), snapshot.resources2.end(),
-                                         [&](const auto& resource) { return resource.owner == draw.geometry; });
-                        const auto index = found == snapshot.resources2.end()
-                                               ? snapshot.resources2.size()
-                                               : static_cast<std::size_t>(found - snapshot.resources2.begin());
-                        if (found == snapshot.resources2.end()) {
+                        const MeshKey key{draw.geometry.get(), draw.texCoords.get()};
+                        const auto found = indices.meshes2.find(key);
+                        const auto index = found == indices.meshes2.end() ? snapshot.resources2.size() : found->second;
+                        if (found == indices.meshes2.end()) {
                             render_contracts::MeshResource2 resource;
                             resource.owner = draw.geometry;
                             resource.positions = mesh->positions();
                             const auto triangles = mesh->triangles();
                             resource.triangles = std::as_bytes(triangles);
+                            if (draw.texCoords && draw.texCoords->size() == mesh->positions().size()) {
+                                resource.texCoords = *draw.texCoords;
+                                resource.texCoordsOwner = draw.texCoords;
+                            }
+                            resource.resourceId = pointerId(key.geometry, key.texCoords);
+                            resource.version = 1;
                             snapshot.resources2.push_back(resource);
+                            indices.meshes2.emplace(key, index);
                         }
-                        items.push_back({index, draw.localToWorld, materialIndex(draw.material, snapshot), draw.layer,
-                                         draw.order, draw.wireframe});
+                        items.push_back({index, draw.localToWorld, materialIndex(draw.material, snapshot, indices),
+                                         draw.layer, draw.order, draw.wireframe});
                     }
                     if constexpr (std::is_same_v<PassType, WorldDrawList2>) {
                         snapshot.passes.push_back(render_contracts::World2DPass{source.camera, std::move(items)});
@@ -329,7 +401,7 @@ private:
     }
 
     [[nodiscard]] static bool isVisible(const objectlib::Aabb3& worldBounds, const math::Transform3& worldToView,
-                                        const render_contracts::Camera3& camera) {
+                                        const render_contracts::Camera3& camera, double aspect = 1.0) {
         const auto bounds = transformBounds(worldBounds, worldToView);
         return std::visit(
             [&](const auto& value) {
@@ -353,18 +425,23 @@ private:
                         value.verticalFieldOfView >= std::numbers::pi) {
                         return false;
                     }
-                    const double nearestDepth = std::max(bounds.min()[2], value.nearPlane);
-                    const double halfExtent = nearestDepth * std::tan(value.verticalFieldOfView / 2);
-                    return bounds.max()[0] >= -halfExtent && bounds.min()[0] <= halfExtent &&
-                           bounds.max()[1] >= -halfExtent && bounds.min()[1] <= halfExtent;
+                    const double farthestDepth = std::min(bounds.max()[2], value.farPlane);
+                    if (farthestDepth < value.nearPlane) {
+                        return false;
+                    }
+                    const double safeAspect = (std::isfinite(aspect) && aspect > 0.0) ? aspect : 1.0;
+                    const double halfVertical = farthestDepth * std::tan(value.verticalFieldOfView / 2);
+                    const double halfHorizontal = halfVertical * safeAspect;
+                    return bounds.max()[0] >= -halfHorizontal && bounds.min()[0] <= halfHorizontal &&
+                           bounds.max()[1] >= -halfVertical && bounds.min()[1] <= halfVertical;
                 }
             },
             camera);
     }
 
     [[nodiscard]] static bool isVisible(const objectlib::Aabb3& worldBounds, const math::Transform3& worldToView,
-                                        const render_contracts::PerspectiveCamera3& camera) {
-        return isVisible(worldBounds, worldToView, render_contracts::Camera3{camera});
+                                        const render_contracts::PerspectiveCamera3& camera, double aspect = 1.0) {
+        return isVisible(worldBounds, worldToView, render_contracts::Camera3{camera}, aspect);
     }
 };
 

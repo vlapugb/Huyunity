@@ -16,10 +16,14 @@
 #include "huynity/runtime/frame_completions.h"
 #include "huynity/runtime/frame_pipeline.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <numbers>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -36,59 +40,84 @@ namespace actor = huynity::adapters::renderer_actor;
 
 int main(int argc, char* argv[]) {
     bool continuousMode = false;
+    std::string screenshotPath;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg{argv[i]};
         if (arg == "--continuous" || arg == "-c") {
             continuousMode = true;
+        } else if ((arg == "--screenshot" || arg == "-s") && i + 1 < argc) {
+            screenshotPath = argv[++i];
         }
     }
 
     // 1. Создание окна через фабрику оконного адаптера
-    auto window = window::createWindow({.size = {64, 64}, .title = "Huynity Window Demo"});
+    auto window = window::createWindow({.size = {960, 640}, .title = "Huynity Window Demo"});
     if (!window || !window->isOpen()) {
         std::cerr << "Failed to create window adapter\n";
         return 1;
     }
 
-    // 2. Создание сцены Core: 3D вращающийся куб со светом и материалом + экранный элемент HUD
+    // 2. Кинетическая скульптура в выставочном пространстве.
     core::Scene scene;
 
-    auto cubeResult = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{4.0, 4.0, 4.0}}});
-    if (!cubeResult) {
-        std::cerr << "Failed to create cube object: " << static_cast<int>(cubeResult.error().code) << "\n";
+    auto rotorResult = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{0.55, 0.55, 0.7}}});
+    if (!rotorResult) {
+        std::cerr << "Failed to create kinetic rotor: " << static_cast<int>(rotorResult.error().code) << "\n";
         return 1;
     }
-    const auto cubeId = *cubeResult;
-    (void)scene.setMobility(cubeId, core::Mobility::Dynamic);
-    (void)scene.setLocalTransform(cubeId, math::translation(math::Vector3{{0.0, 0.0, 10.0}}));
-    (void)scene.setRenderProperties(cubeId, core::RenderSpace::World, 0, 0);
-    (void)scene.setMaterial(cubeId, std::make_shared<const render::Material>(render::Color{0.2, 0.8, 0.3, 1.0}));
+    const auto rotorId = *rotorResult;
+    (void)scene.setMobility(rotorId, core::Mobility::Dynamic);
+    (void)scene.setLocalTransform(rotorId, math::translation(math::Vector3{{0.0, 0.0, 10.0}}));
+    (void)scene.setRenderProperties(rotorId, core::RenderSpace::World, 0, 0);
+    (void)scene.setMaterial(rotorId, std::make_shared<const render::Material>(render::Color{0.76, 0.49, 0.22, 1.0}));
 
-    auto hudResult = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{16.0, 8.0}}});
-    if (!hudResult) {
-        std::cerr << "Failed to create HUD object: " << static_cast<int>(hudResult.error().code) << "\n";
-        return 1;
+    // Кинетический экспонат: лопасти из цельных треугольных сеток на общей оси.
+    for (std::uint32_t blade = 0; blade < 9; ++blade) {
+        auto created = scene.createObject<objects::ObjectType::TriangleMesh3>({
+            .positions = {{{0.35, -0.12, 0}}, {{2.8, 0.15, 0.14}}, {{2.35, 0.9, -0.10}}, {{0.65, 0.4, 0}}},
+            .triangles = {{{0, 2, 1}}, {{0, 3, 2}}},
+        });
+        if (!created) {
+            return 1;
+        }
+        (void)scene.setParent(*created, rotorId);
+        (void)scene.setLocalTransform(*created,
+                                      math::rotation(math::RotationAxis::Z, blade * 2 * std::numbers::pi / 9));
+        (void)scene.setBackfaceCulling(*created, false);
+        (void)scene.setMaterial(*created, std::make_shared<const render::Material>(
+                                              render::Color{0.35 + blade * 0.035, 0.48 + blade * 0.025, 0.46, 1}));
     }
-    const auto hudId = *hudResult;
-    (void)scene.setRenderProperties(hudId, core::RenderSpace::Hud, 0, 0);
-    (void)scene.setLocalTransform(hudId, math::translation(math::Vector2{{16.0, 16.0}}));
-    (void)scene.setMaterial(hudId, std::make_shared<const render::Material>(render::Color{1.0, 0.9, 0.1, 0.8}));
+    const auto addBox = [&](math::Vector3 size, math::Vector3 position, render::Color color) {
+        auto created = scene.createObject<objects::ObjectType::Box3>({.size = size});
+        if (!created) {
+            throw std::runtime_error("Cannot create display stand");
+        }
+        (void)scene.setLocalTransform(*created, math::translation(position));
+        (void)scene.setMaterial(*created, std::make_shared<const render::Material>(color));
+    };
+    addBox({{3.8, 0.28, 2.8}}, {{0, -3.35, 10}}, {0.58, 0.53, 0.43, 1});
+    addBox({{0.24, 3.0, 0.24}}, {{0, -1.75, 10.5}}, {0.22, 0.27, 0.27, 1});
+    addBox({{30, 0.18, 24}}, {{0, -3.6, 10}}, {0.32, 0.34, 0.32, 1});
+    addBox({{24, 15, 0.3}}, {{0, 2, 16}}, {0.65, 0.61, 0.53, 1});
+    for (int panel = -4; panel <= 4; ++panel) {
+        addBox({{0.06, 12, 0.08}}, {{panel * 2.0, 2, 15.8}}, {0.42, 0.40, 0.35, 1});
+    }
 
     core::PassesConfig passesConfig;
     passesConfig.camera3 = render::OrthographicCamera3{
         .worldToView = math::Transform3{},
         .width = 16.0,
-        .height = 16.0,
+        .height = 10.67,
         .nearPlane = 1.0,
         .farPlane = 50.0,
     };
-    passesConfig.hudEnabled = true;
+    passesConfig.hudEnabled = false;
     passesConfig.lighting = {
-        .ambient = {render::Color{1.0, 1.0, 1.0, 1.0}, 0.25},
+        .ambient = {render::Color{1.0, 1.0, 1.0, 1.0}, 0.65},
         .directional =
             {
                 {
-                    .direction = math::Vector3{{1.0, 1.0, 1.0}},
+                    .direction = math::Vector3{{-0.5, -1.0, 0.8}},
                     .color = render::Color{1.0, 1.0, 1.0, 1.0},
                     .intensity = 0.75,
                 },
@@ -111,7 +140,7 @@ int main(int argc, char* argv[]) {
     auto* headless = dynamic_cast<window::HeadlessWindow*>(window.get());
     std::size_t step = 0;
     std::uint64_t frameId = 0;
-    double cubeAngle = 0.0;
+    double rotorAngle = 0.0;
     bool closeRequested = false;
 
     std::cout << "Starting Huynity Window Demo (" << (continuousMode ? "continuous mode" : "10 demo steps") << ")...\n";
@@ -133,7 +162,7 @@ int main(int argc, char* argv[]) {
                 headless->pushEvent(
                     window::MouseButtonReleasedEvent{.button = window::MouseButton::Left, .x = 32.0, .y = 32.0});
             } else if (step == 7) {
-                headless->resize(80, 80);
+                headless->resize(960, 640);
             } else if (step == DEMO_STEPS + 1 && !continuousMode) {
                 headless->pushEvent(window::WindowCloseRequestedEvent{});
             }
@@ -166,15 +195,13 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-        // 2. Fixed-step update: вращение 3D-куба
+        // 2. Fixed-step update: медленное вращение лопастей.
         constexpr double elapsed = 1.0 / 60.0;
         (void)update.advance(elapsed, [&](double dt) {
-            cubeAngle += 1.5 * dt;
-            const auto rotX = math::rotation(math::RotationAxis::X, cubeAngle * 0.7);
-            const auto rotY = math::rotation(math::RotationAxis::Y, cubeAngle);
+            rotorAngle += 1.5 * dt;
             const auto trans = math::translation(math::Vector3{{0.0, 0.0, 10.0}});
-            const auto cubeTransform = math::compose(trans, math::compose(rotX, rotY));
-            (void)scene.setLocalTransform(cubeId, cubeTransform);
+            const auto rotorTransform = math::compose(trans, math::rotation(math::RotationAxis::Z, rotorAngle * 0.2));
+            (void)scene.setLocalTransform(rotorId, rotorTransform);
         });
 
         // 3. Подготовка RenderSnapshot
@@ -198,6 +225,19 @@ int main(int argc, char* argv[]) {
         if (!renderResult) {
             std::cerr << "Failed to render snapshot: " << static_cast<int>(renderResult.error()) << "\n";
             return 1;
+        }
+
+        if (!screenshotPath.empty() && step == DEMO_STEPS) {
+            std::ofstream output(screenshotPath, std::ios::binary);
+            output << "P6\n" << framebuffer->width() << ' ' << framebuffer->height() << "\n255\n";
+            for (std::size_t y = 0; y < framebuffer->height(); ++y) {
+                for (std::size_t x = 0; x < framebuffer->width(); ++x) {
+                    output.write(reinterpret_cast<const char*>(framebuffer->row(y).data() + x * 4), 3);
+                }
+            }
+            if (!output) {
+                throw std::runtime_error("Cannot write window demo screenshot");
+            }
         }
 
         // 5. Отправка кадра в конвейер и презентация через window->present()

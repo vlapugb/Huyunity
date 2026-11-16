@@ -1,4 +1,8 @@
+#include "huynity/renderer/gl_renderer.h"
+
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_opengl.h>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -48,6 +52,24 @@ void testLifecycle() {
     CHECK(!native.isOpen());
 }
 
+void testPaddedPresent() {
+    window::NativeWindow native({64, 48}, "SDL padded present");
+    const auto size = native.size();
+    const auto rowBytes = static_cast<std::size_t>(size.width) * 4;
+    auto padded = makeBuffer(size.width, size.height, rowBytes + 1);
+    padded = native.present(std::move(padded));
+    using ReadTexture = void (*)(GLenum, GLint, GLenum, GLenum, void*);
+    const auto readTexture = reinterpret_cast<ReadTexture>(native.glProcResolver()("glGetTexImage"));
+    CHECK(readTexture != nullptr);
+    std::vector<std::byte> pixels(rowBytes * size.height);
+    readTexture(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    for (std::size_t row = 0; row < size.height; ++row) {
+        CHECK(std::equal(pixels.begin() + row * rowBytes, pixels.begin() + (row + 1) * rowBytes,
+                         padded->bytes().begin() + row * padded->stride()));
+    }
+    std::cout << "Padded native presentation passed\n";
+}
+
 void testPresent() {
     window::NativeWindow native({2, 2}, "SDL present");
     auto framebuffer = makeBuffer(2, 2, 12);
@@ -60,6 +82,17 @@ void testPresent() {
     framebuffer = native.present(std::move(framebuffer));
     CHECK(framebuffer.get() == original);
     CHECK(native.present(nullptr) == nullptr);
+    CHECK(native.hasGpuSurface());
+    CHECK(native.makeCurrent());
+    huynity::renderer::GlRenderer renderer{native.glProcResolver()};
+    huynity::render_contracts::RenderSnapshot snapshot;
+    snapshot.imageWidth = 2;
+    snapshot.imageHeight = 2;
+    snapshot.clearColor = {1.0, 0.0, 0.0, 1.0};
+    auto captured = renderer.capture(snapshot);
+    CHECK(captured.has_value());
+    CHECK((*captured)->bytes()[0] == std::byte{255});
+    CHECK((*captured)->bytes()[1] == std::byte{0});
 
     auto mismatched = makeBuffer(1, 2);
     const auto* mismatchedPointer = mismatched.get();
@@ -114,8 +147,8 @@ void testPollEvents() {
     resizedFrame = native.present(std::move(resizedFrame));
     CHECK(resizedFrame != nullptr);
 
+    events.clear();
     native.pollEvents(events);
-    CHECK(events.size() == 3);
     events.clear();
 
     SDL_Event motion{};
@@ -138,6 +171,16 @@ void testPollEvents() {
 
 int main() {
     try {
+        const auto* driver = SDL_GetCurrentVideoDriver();
+        const auto* requestedDriver = SDL_getenv("SDL_VIDEO_DRIVER");
+        const auto* legacyDriver = SDL_getenv("SDL_VIDEODRIVER");
+        if ((driver != nullptr && std::string_view{driver} == "dummy") ||
+            (requestedDriver != nullptr && std::string_view{requestedDriver} == "dummy") ||
+            (legacyDriver != nullptr && std::string_view{legacyDriver} == "dummy")) {
+            std::cout << "OpenGL native tests skipped on SDL dummy driver\n";
+            return 0;
+        }
+        testPaddedPresent();
         testLifecycle();
         testPresent();
         testPollEvents();

@@ -3,8 +3,8 @@
 #include "huynity/adapters/window/window_adapter.h"
 
 struct SDL_Window;
-struct SDL_Renderer;
-struct SDL_Texture;
+struct SDL_GLContextState;
+using SDL_GLContext = SDL_GLContextState*;
 
 namespace huynity::adapters::window {
 
@@ -24,13 +24,17 @@ public:
     void setTitle(std::string_view title) override;
     void pollEvents(std::vector<InputEvent>& outEvents) override;
     [[nodiscard]] std::unique_ptr<image::ImageBuffer> present(std::unique_ptr<image::ImageBuffer> framebuffer) override;
+    [[nodiscard]] bool hasGpuSurface() const noexcept override { return m_context != nullptr; }
+    [[nodiscard]] bool makeCurrent() noexcept override;
+    void swapBuffers() noexcept override;
+    [[nodiscard]] GlProcResolver glProcResolver() const noexcept override;
 
 private:
-    [[nodiscard]] bool ensureTexture() noexcept;
-
     SDL_Window* m_window{};
-    SDL_Renderer* m_renderer{};
-    SDL_Texture* m_texture{};
+    SDL_GLContext m_context{};
+    unsigned int m_blitProgram{};
+    unsigned int m_blitTexture{};
+    unsigned int m_blitVao{};
     WindowSize m_size;
     bool m_isOpen{};
     bool m_videoInitialized{};

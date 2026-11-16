@@ -19,8 +19,9 @@ if(SDL3_FOUND AND TARGET SDL3::SDL3)
         src/native_window.cpp
         src/sdl_event_translation.cpp
     )
+    find_package(OpenGL REQUIRED)
     target_compile_definitions(huynity_window PUBLIC HUYNITY_HAS_NATIVE_WINDOW SDL_MAIN_HANDLED)
-    target_link_libraries(huynity_window PRIVATE SDL3::SDL3)
+    target_link_libraries(huynity_window PRIVATE SDL3::SDL3 OpenGL::GL)
 else()
     message(STATUS "Native window backend not found; defaulting to HeadlessWindow fallback")
 endif()

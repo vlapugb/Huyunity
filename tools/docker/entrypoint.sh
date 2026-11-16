@@ -18,11 +18,11 @@ resolve_binary() {
         game_scene|village|windmill)
             echo "${BUILD_DIR}/examples/game_scene/huynity_game_scene"
             ;;
-        corridor|first_person|first_person_corridor)
-            echo "${BUILD_DIR}/examples/first_person_corridor/huynity_first_person_corridor"
+        sunlit_sanctuary|sanctuary)
+            echo "${BUILD_DIR}/examples/sunlit_sanctuary/huynity_sunlit_sanctuary"
             ;;
-        arena|third_person|third_person_arena)
-            echo "${BUILD_DIR}/examples/third_person_arena/huynity_third_person_arena"
+        canyon_observatory|observatory)
+            echo "${BUILD_DIR}/examples/canyon_observatory/huynity_canyon_observatory"
             ;;
         renderer_gallery|gallery)
             echo "${BUILD_DIR}/examples/renderer_gallery/huynity_renderer_gallery"

@@ -61,6 +61,11 @@ struct SceneInstance {
     std::int32_t layer{};
     std::int32_t order{};
     bool wireframe{false};
+    render_contracts::ShadingModel shading{render_contracts::ShadingModel::Flat};
+    bool backfaceCulling{true};
+    bool castShadow{true};
+    bool receiveShadow{true};
+    std::shared_ptr<const std::vector<math::Point2>> texCoords;
     std::shared_ptr<const render_contracts::Material> material;
     InstanceRevisions revisions;
     DirtyFlags dirty;
@@ -161,6 +166,11 @@ struct SceneInstanceView {
     std::shared_ptr<const render_contracts::Material> material;
     std::optional<ObjectId> parent;
     std::vector<ObjectId> children;
+    render_contracts::ShadingModel shading{render_contracts::ShadingModel::Flat};
+    bool backfaceCulling{true};
+    bool castShadow{true};
+    bool receiveShadow{true};
+    std::shared_ptr<const std::vector<math::Point2>> texCoords;
 };
 
 struct SceneView {
@@ -348,6 +358,67 @@ public:
         return {};
     }
 
+    Result setShading(ObjectId id, render_contracts::ShadingModel shading) {
+        auto* instance = m_instances.find(id);
+        if (instance == nullptr) {
+            return std::unexpected(SceneError::InvalidObjectId);
+        }
+        if (instance->shading == shading) {
+            return {};
+        }
+        instance->shading = shading;
+        ++instance->revisions.visibility;
+        instance->dirty.visibility = true;
+        return {};
+    }
+
+    Result setBackfaceCulling(ObjectId id, bool backfaceCulling) {
+        auto* instance = m_instances.find(id);
+        if (instance == nullptr) {
+            return std::unexpected(SceneError::InvalidObjectId);
+        }
+        if (instance->backfaceCulling == backfaceCulling) {
+            return {};
+        }
+        instance->backfaceCulling = backfaceCulling;
+        ++instance->revisions.visibility;
+        instance->dirty.visibility = true;
+        return {};
+    }
+
+    Result setShadowOptions(ObjectId id, bool castShadow, bool receiveShadow = true) {
+        auto* instance = m_instances.find(id);
+        if (instance == nullptr) {
+            return std::unexpected(SceneError::InvalidObjectId);
+        }
+        if (instance->castShadow == castShadow && instance->receiveShadow == receiveShadow) {
+            return {};
+        }
+        instance->castShadow = castShadow;
+        instance->receiveShadow = receiveShadow;
+        ++instance->revisions.visibility;
+        instance->dirty.visibility = true;
+        return {};
+    }
+
+    Result setTexCoords(ObjectId id, std::vector<math::Point2> texCoords) {
+        return setTexCoords(id, std::make_shared<const std::vector<math::Point2>>(std::move(texCoords)));
+    }
+
+    Result setTexCoords(ObjectId id, std::shared_ptr<const std::vector<math::Point2>> texCoords) {
+        auto* instance = m_instances.find(id);
+        if (instance == nullptr) {
+            return std::unexpected(SceneError::InvalidObjectId);
+        }
+        if (instance->texCoords == texCoords) {
+            return {};
+        }
+        instance->texCoords = std::move(texCoords);
+        ++instance->revisions.material;
+        instance->dirty.material = true;
+        return {};
+    }
+
     Result setMaterial(ObjectId id, std::shared_ptr<const render_contracts::Material> material) {
         auto* instance = m_instances.find(id);
         if (instance == nullptr) {
@@ -393,11 +464,12 @@ public:
         result.instances.reserve(m_instances.size());
         for (std::size_t index = 0; index < m_instances.size(); ++index) {
             const auto& instance = m_instances.values()[index];
-            result.instances.push_back({m_instances.ids()[index], instance.geometry, instance.geometryVersion,
-                                        instance.localTransform, instance.worldTransform, instance.worldBounds,
-                                        instance.mobility, instance.isVisible, instance.renderSpace, instance.layer,
-                                        instance.order, instance.wireframe, instance.material, instance.parent,
-                                        instance.children});
+            result.instances.push_back(
+                {m_instances.ids()[index], instance.geometry,    instance.geometryVersion, instance.localTransform,
+                 instance.worldTransform,  instance.worldBounds, instance.mobility,        instance.isVisible,
+                 instance.renderSpace,     instance.layer,       instance.order,           instance.wireframe,
+                 instance.material,        instance.parent,      instance.children,        instance.shading,
+                 instance.backfaceCulling, instance.castShadow,  instance.receiveShadow,   instance.texCoords});
         }
         return result;
     }

@@ -9,6 +9,7 @@
 #include "huynity/objectlib/shapes/rectangle2.h"
 #include "huynity/objectlib/shapes/sphere3.h"
 #include "huynity/render_contracts/render_snapshot.h"
+#include "huynity/renderer/gl_renderer.h"
 #include "huynity/renderer/software_renderer.h"
 #include "huynity/runtime/fixed_step_update.h"
 #include "huynity/runtime/frame_completions.h"
@@ -21,6 +22,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <dlfcn.h>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -1354,6 +1358,211 @@ void scenarioSlowRenderer() {
 // Main
 // ============================================================================
 
+// ============================================================================
+// Сценарий 7: GPU (OpenGL 3.3 Core) против CPU (SoftwareRenderer)
+// ============================================================================
+// Скрытый GLX-pbuffer контекст создаётся через dlopen без зависимостей сборки
+// от X11; при недоступном GL-дисплее сценарий выводит пропуск и успешно завершается.
+
+namespace glx {
+
+constexpr int drawableType = 0x8010;
+constexpr int renderType = 0x8011;
+constexpr int rgbaBit = 0x00000001;
+constexpr int pbufferBit = 0x00000004;
+constexpr int pbufferWidth = 0x8041;
+constexpr int pbufferHeight = 0x8042;
+constexpr int contextMajor = 0x2091;
+constexpr int contextMinor = 0x2092;
+constexpr int contextProfileMask = 0x9126;
+constexpr int contextCoreProfile = 0x00000001;
+
+class Context {
+public:
+    static std::unique_ptr<Context> create() {
+        void* x11 = dlopen("libX11.so.6", RTLD_NOW | RTLD_LOCAL);
+        void* glx = dlopen("libGLX.so.0", RTLD_NOW | RTLD_LOCAL);
+        if (glx == nullptr) {
+            glx = dlopen("libGL.so.1", RTLD_NOW | RTLD_LOCAL);
+        }
+        if (x11 == nullptr || glx == nullptr) {
+            return nullptr;
+        }
+        auto context = std::unique_ptr<Context>(new Context(x11, glx));
+        if (!context->initialize()) {
+            return nullptr;
+        }
+        g_active = context.get();
+        return context;
+    }
+
+    ~Context() {
+        if (m_display != nullptr) {
+            m_makeCurrent(m_display, 0, nullptr);
+            m_destroyPbuffer(m_display, m_pbuffer);
+            m_destroyContext(m_display, m_context);
+            m_closeDisplay(m_display);
+        }
+        dlclose(m_x11);
+        dlclose(m_glx);
+    }
+
+    Context(const Context&) = delete;
+    Context& operator=(const Context&) = delete;
+
+    [[nodiscard]] renderer::GlRenderer::GlProcResolver resolver() const noexcept { return &resolveProc; }
+
+private:
+    using GetProcFn = void* (*)(const unsigned char*);
+
+    static void* resolveProc(const char* name) {
+        return g_active->m_getProc(reinterpret_cast<const unsigned char*>(name));
+    }
+
+    Context(void* x11, void* glx) : m_x11(x11), m_glx(glx) {}
+
+    bool initialize() {
+        const auto xOpenDisplay = reinterpret_cast<void* (*)(const char*)>(dlsym(m_x11, "XOpenDisplay"));
+        m_closeDisplay = reinterpret_cast<int (*)(void*)>(dlsym(m_x11, "XCloseDisplay"));
+        const auto chooseFbConfig =
+            reinterpret_cast<void** (*)(void*, int, const int*, int*)>(dlsym(m_glx, "glXChooseFBConfig"));
+        const auto createPbuffer =
+            reinterpret_cast<unsigned long (*)(void*, void*, const int*)>(dlsym(m_glx, "glXCreatePbuffer"));
+        m_destroyPbuffer = reinterpret_cast<void (*)(void*, unsigned long)>(dlsym(m_glx, "glXDestroyPbuffer"));
+        m_getProc = reinterpret_cast<GetProcFn>(dlsym(m_glx, "glXGetProcAddressARB"));
+        m_destroyContext = reinterpret_cast<void (*)(void*, void*)>(dlsym(m_glx, "glXDestroyContext"));
+        m_makeCurrent = reinterpret_cast<int (*)(void*, unsigned long, void*)>(dlsym(m_glx, "glXMakeCurrent"));
+        if (xOpenDisplay == nullptr || m_closeDisplay == nullptr || chooseFbConfig == nullptr ||
+            createPbuffer == nullptr || m_destroyPbuffer == nullptr || m_getProc == nullptr ||
+            m_destroyContext == nullptr || m_makeCurrent == nullptr) {
+            return false;
+        }
+        const auto createContextAttribs = reinterpret_cast<void* (*)(void*, void*, void*, int, const int*)>(
+            m_getProc(reinterpret_cast<const unsigned char*>("glXCreateContextAttribsARB")));
+        if (createContextAttribs == nullptr) {
+            return false;
+        }
+        m_display = xOpenDisplay(nullptr);
+        if (m_display == nullptr) {
+            return false;
+        }
+        const int fbAttribs[] = {drawableType, pbufferBit, renderType, rgbaBit, 8, 8, 9, 8, 10, 8, 11, 8, 12, 24, 0};
+        int configCount = 0;
+        void** configs = chooseFbConfig(m_display, 0, fbAttribs, &configCount);
+        if (configs == nullptr || configCount == 0) {
+            return false;
+        }
+        const int pbufferAttribs[] = {pbufferWidth, 1280, pbufferHeight, 720, 0};
+        m_pbuffer = createPbuffer(m_display, configs[0], pbufferAttribs);
+        if (m_pbuffer == 0) {
+            return false;
+        }
+        const int contextAttribs[] = {contextMajor, 3, contextMinor, 3, contextProfileMask, contextCoreProfile, 0};
+        m_context = createContextAttribs(m_display, configs[0], nullptr, 1, contextAttribs);
+        if (m_context == nullptr) {
+            return false;
+        }
+        return m_makeCurrent(m_display, m_pbuffer, m_context) != 0;
+    }
+
+    static Context* g_active;
+    void* m_x11{};
+    void* m_glx{};
+    void* m_display{};
+    void* m_context{};
+    unsigned long m_pbuffer{};
+    int (*m_closeDisplay)(void*){};
+    void (*m_destroyPbuffer)(void*, unsigned long){};
+    GetProcFn m_getProc{};
+    void (*m_destroyContext)(void*, void*){};
+    int (*m_makeCurrent)(void*, unsigned long, void*){};
+};
+
+Context* Context::g_active = nullptr;
+
+} // namespace glx
+
+void scenarioGpuVsCpu() {
+    constexpr std::size_t width = 1280;
+    constexpr std::size_t height = 720;
+    constexpr int measuredFrames = 10;
+
+    // Сцена: сетка освещённых коробок с тенями и небом — типичный 3D-кадр движка.
+    core::Scene scene;
+    for (int row = 0; row < 8; ++row) {
+        for (int column = 0; column < 8; ++column) {
+            auto box = scene.createObject<objects::ObjectType::Box3>(
+                {.size = math::Vector3{{0.6, 0.6 + 0.3 * ((row + column) % 3), 0.6}}});
+            CHECK(box.has_value());
+            const auto transform =
+                math::compose(math::translation(math::Vector3{{(column - 3.5) * 1.1, (row - 3.5) * 1.1, 6.0}}),
+                              math::rotation(math::RotationAxis::Z, 0.3 * static_cast<double>(row + column)));
+            CHECK(scene.setLocalTransform(*box, transform).has_value());
+        }
+    }
+    core::PassesConfig config;
+    render::PerspectiveCamera3 camera;
+    camera.verticalFieldOfView = std::numbers::pi / 3;
+    camera.nearPlane = 0.1;
+    camera.farPlane = 100;
+    config.camera3 = camera;
+    config.lighting.ambient = {render::Color{1, 1, 1, 1}, 0.3};
+    config.lighting.directional.push_back({math::Vector3{{0.4, -0.6, 0.7}}, render::Color{1, 1, 1, 1}, 0.8});
+    config.lighting.shadows.enabled = true;
+    config.lighting.shadows.resolution = 1024;
+    config.lighting.shadows.extent = 10;
+    config.lighting.shadows.center = math::Point3{{0, 0, 6}};
+    config.lighting.sky.enabled = true;
+    auto snapshotResult = core::RenderPreparation::prepareSnapshot(scene, config, width, height);
+    CHECK(snapshotResult.has_value());
+    const auto& snapshot = *snapshotResult;
+
+    auto framebuffer = image::ImageBuffer::create({width, height});
+    CHECK(framebuffer.has_value());
+    renderer::SoftwareRenderer softwareRenderer;
+    const auto renderOnceCpu = [&]() {
+        const auto start = std::chrono::steady_clock::now();
+        CHECK(softwareRenderer.render(snapshot, *framebuffer).has_value());
+        return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+    };
+    renderOnceCpu();
+    std::uint64_t cpuTotal = 0;
+    for (int frame = 0; frame < measuredFrames; ++frame) {
+        cpuTotal += renderOnceCpu();
+    }
+
+    auto context = glx::Context::create();
+    if (context == nullptr) {
+        std::cout << "------------------------------------------------------------\n"
+                  << "Scenario: GPU vs CPU (skipped: OpenGL display is not available)\n"
+                  << "  CPU-only SoftwareRenderer avg: " << cpuTotal / measuredFrames << " us\n"
+                  << "------------------------------------------------------------\n";
+        return;
+    }
+    const auto resolver = context->resolver();
+    const auto finish = reinterpret_cast<void (*)()>(resolver("glFinish"));
+    renderer::GlRenderer glRenderer(resolver);
+    const auto renderOnceGpu = [&]() {
+        const auto start = std::chrono::steady_clock::now();
+        CHECK(glRenderer.render(snapshot).has_value());
+        if (finish != nullptr) {
+            finish();
+        }
+        return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+    };
+    renderOnceGpu();
+    std::uint64_t gpuTotal = 0;
+    for (int frame = 0; frame < measuredFrames; ++frame) {
+        gpuTotal += renderOnceGpu();
+    }
+
+    std::cout << "------------------------------------------------------------\n"
+              << "Scenario: GPU vs CPU (64 lit boxes, shadows + sky, " << width << "x" << height << ")\n"
+              << "  Avg render frame time: gpu=" << gpuTotal / measuredFrames
+              << " us, cpu=" << cpuTotal / measuredFrames << " us\n"
+              << "------------------------------------------------------------\n";
+}
+
 int main() {
     try {
         std::cout << "Running Huynity Benchmark Suite...\n\n";
@@ -1364,8 +1573,9 @@ int main() {
         scenario2DOnly();
         scenario3DWithHud();
         scenarioSlowRenderer();
+        scenarioGpuVsCpu();
 
-        std::cout << "\nAll 6 benchmark scenarios passed successfully.\n";
+        std::cout << "\nAll 7 benchmark scenarios passed successfully.\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Benchmark failure: " << error.what() << '\n';

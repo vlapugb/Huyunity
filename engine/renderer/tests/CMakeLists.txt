@@ -69,3 +69,12 @@ endif()
 add_test(NAME renderer.textured_rasterization COMMAND huynity_textured_rasterization_tests)
 
 
+
+add_executable(huynity_renderer_opengl_tests opengl_tests.cpp)
+target_include_directories(huynity_renderer_opengl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(huynity_renderer_opengl_tests PRIVATE huynity::renderer ${CMAKE_DL_LIBS})
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(huynity_renderer_opengl_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME renderer.opengl COMMAND huynity_renderer_opengl_tests)
+set_tests_properties(renderer.opengl PROPERTIES SKIP_RETURN_CODE 77)

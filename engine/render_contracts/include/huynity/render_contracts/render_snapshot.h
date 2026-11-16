@@ -61,6 +61,9 @@ struct Material {
     std::shared_ptr<const image::ImageBuffer> texture{};
     TextureFilter filter{TextureFilter::Nearest};
     TextureWrap wrap{TextureWrap::Clamp};
+    bool unlit{false};
+    std::uint64_t textureId{};
+    std::uint64_t textureVersion{};
 };
 
 struct AmbientLight {
@@ -74,9 +77,41 @@ struct DirectionalLight {
     double intensity{};
 };
 
+/// @brief Параметры направленной карты теней для первого направленного источника.
+struct ShadowConfig {
+    bool enabled{false};
+    std::size_t resolution{512};
+    double extent{18.0};
+    math::Point3 center{};   // Центр объёма карты теней в мировых координатах.
+    double depthRange{80.0}; // Полная глубина объёма вдоль направления света.
+    double bias{0.06};
+    double minVisibility{0.0};
+};
+
+/// @brief Параметры атмосферной дымки по расстоянию от камеры.
+struct FogConfig {
+    bool enabled{false};
+    Color color{0.7, 0.8, 0.9, 1.0};
+    double start{25.0};
+    double end{95.0};
+};
+
+/// @brief Параметры процедурного 3D-градиента неба и ореола солнца.
+struct SkyConfig {
+    bool enabled{false};
+    Color zenithColor{0.18, 0.45, 0.82, 1.0};
+    Color horizonColor{0.82, 0.90, 0.96, 1.0};
+    Color groundColor{0.35, 0.38, 0.42, 1.0};
+    Color sunColor{1.0, 0.95, 0.82, 1.0};
+    double sunGlow{0.35};
+};
+
 struct Lighting3 {
     AmbientLight ambient{};
     std::vector<DirectionalLight> directional;
+    ShadowConfig shadows{};
+    FogConfig fog{};
+    SkyConfig sky{};
 };
 
 struct TriangleIndices {
@@ -91,6 +126,9 @@ struct MeshResource {
     std::span<const Point> positions;
     std::span<const std::byte> triangles;
     std::span<const math::Point2> texCoords{};
+    std::shared_ptr<const void> texCoordsOwner{};
+    std::uint64_t resourceId{};
+    std::uint64_t version{};
 };
 
 using MeshResource2 = MeshResource<math::Point2>;
@@ -111,6 +149,8 @@ struct DrawItem3 {
     bool backfaceCulling{true};
     bool wireframe{false};
     ShadingModel shading{ShadingModel::Flat};
+    bool castShadow{true};
+    bool receiveShadow{true};
 };
 
 struct DrawItem2 {

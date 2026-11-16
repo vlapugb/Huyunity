@@ -1,16 +1,24 @@
 #include "native_window.h"
 
 #include <SDL3/SDL.h>
+#define GL_GLEXT_PROTOTYPES
+#include <SDL3/SDL_opengl.h>
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "sdl_event_translation.h"
 
 namespace huynity::adapters::window {
 namespace {
+
+void* resolveGlProcedure(const char* name) {
+    return reinterpret_cast<void*>(SDL_GL_GetProcAddress(name));
+}
 
 [[nodiscard]] int sdlDimension(std::uint32_t value) {
     if (value == 0 || value > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
@@ -75,15 +83,23 @@ NativeWindow::NativeWindow(WindowSize size, std::string_view title) : m_size{siz
         }
         m_videoInitialized = true;
 
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         m_window = SDL_CreateWindow(std::string(title).c_str(), width, height,
-                                    SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+                                    SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_OPENGL);
         if (m_window == nullptr) {
-            throw sdlError("SDL_CreateWindow failed");
+            throw sdlError("SDL_CreateWindow(OpenGL) failed");
         }
         (void)SDL_SyncWindow(m_window);
-        m_renderer = SDL_CreateRenderer(m_window, nullptr);
-        if (m_renderer == nullptr) {
-            throw sdlError("SDL_CreateRenderer failed");
+        m_context = SDL_GL_CreateContext(m_window);
+        if (m_context == nullptr) {
+            throw sdlError("SDL_GL_CreateContext failed");
+        }
+        if (!SDL_GL_SetSwapInterval(1)) {
+            std::cerr << "SDL_GL_SetSwapInterval(1) failed: " << SDL_GetError() << '\n';
         }
 
         int pixelWidth = 0;
@@ -111,13 +127,18 @@ bool NativeWindow::isOpen() const noexcept {
 
 void NativeWindow::close() noexcept {
     m_isOpen = false;
-    if (m_texture != nullptr) {
-        SDL_DestroyTexture(m_texture);
-        m_texture = nullptr;
-    }
-    if (m_renderer != nullptr) {
-        SDL_DestroyRenderer(m_renderer);
-        m_renderer = nullptr;
+    if (m_context != nullptr) {
+        if (m_blitTexture != 0) {
+            glDeleteTextures(1, &m_blitTexture);
+        }
+        if (m_blitVao != 0) {
+            glDeleteVertexArrays(1, &m_blitVao);
+        }
+        if (m_blitProgram != 0) {
+            glDeleteProgram(m_blitProgram);
+        }
+        SDL_GL_DestroyContext(m_context);
+        m_context = nullptr;
     }
     if (m_window != nullptr) {
         SDL_DestroyWindow(m_window);
@@ -167,64 +188,90 @@ void NativeWindow::pollEvents(std::vector<InputEvent>& outEvents) {
     }
 }
 
-bool NativeWindow::ensureTexture() noexcept {
-    if (m_texture != nullptr) {
-        float textureWidth = 0.0F;
-        float textureHeight = 0.0F;
-        if (SDL_GetTextureSize(m_texture, &textureWidth, &textureHeight) &&
-            static_cast<std::uint32_t>(textureWidth) == m_size.width &&
-            static_cast<std::uint32_t>(textureHeight) == m_size.height) {
-            return true;
-        }
-        SDL_DestroyTexture(m_texture);
-        m_texture = nullptr;
-    }
-
-    if (m_size.width == 0 || m_size.height == 0 ||
-        m_size.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-        m_size.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
-        return false;
-    }
-    m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING,
-                                  static_cast<int>(m_size.width), static_cast<int>(m_size.height));
-    if (m_texture == nullptr) {
-        std::cerr << "SDL_CreateTexture failed: " << SDL_GetError() << '\n';
-        return false;
-    }
-    return true;
-}
-
 std::unique_ptr<image::ImageBuffer> NativeWindow::present(std::unique_ptr<image::ImageBuffer> framebuffer) {
-    if (!framebuffer) {
-        return nullptr;
-    }
-    if (!m_isOpen || m_renderer == nullptr || framebuffer->format() != image::PixelFormat::Rgba8Unorm ||
+    if (!framebuffer || !makeCurrent() || framebuffer->format() != image::PixelFormat::Rgba8Unorm ||
         framebuffer->width() != m_size.width || framebuffer->height() != m_size.height) {
         return framebuffer;
     }
-    if (framebuffer->stride() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
-        std::cerr << "ImageBuffer stride exceeds SDL pitch range\n";
-        return framebuffer;
+    if (m_blitProgram == 0) {
+        const char* vertexSource = R"(#version 330 core
+out vec2 uv;
+void main() {
+    vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+    uv = p;
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+})";
+        const char* fragmentSource = R"(#version 330 core
+in vec2 uv;
+out vec4 color;
+uniform sampler2D image;
+void main() { color = texture(image, vec2(uv.x, 1.0 - uv.y)); })";
+        const auto vertex = glCreateShader(GL_VERTEX_SHADER);
+        const auto fragment = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(vertex, 1, &vertexSource, nullptr);
+        glShaderSource(fragment, 1, &fragmentSource, nullptr);
+        glCompileShader(vertex);
+        glCompileShader(fragment);
+        m_blitProgram = glCreateProgram();
+        glAttachShader(m_blitProgram, vertex);
+        glAttachShader(m_blitProgram, fragment);
+        glLinkProgram(m_blitProgram);
+        glDeleteShader(vertex);
+        glDeleteShader(fragment);
+        GLint linked = 0;
+        glGetProgramiv(m_blitProgram, GL_LINK_STATUS, &linked);
+        if (linked == 0) {
+            std::cerr << "OpenGL software present shader link failed\n";
+            glDeleteProgram(m_blitProgram);
+            m_blitProgram = 0;
+            return framebuffer;
+        }
+        glGenVertexArrays(1, &m_blitVao);
+        glGenTextures(1, &m_blitTexture);
+        glBindTexture(GL_TEXTURE_2D, m_blitTexture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
-    if (!ensureTexture()) {
-        return framebuffer;
+    glViewport(0, 0, static_cast<GLsizei>(m_size.width), static_cast<GLsizei>(m_size.height));
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glBindTexture(GL_TEXTURE_2D, m_blitTexture);
+    const auto packedStride = framebuffer->width() * 4;
+    std::vector<std::byte> packed;
+    const auto* pixels = framebuffer->bytes().data();
+    if (framebuffer->stride() % 4 != 0) {
+        packed.resize(packedStride * framebuffer->height());
+        for (std::size_t row = 0; row < framebuffer->height(); ++row) {
+            std::memcpy(packed.data() + row * packedStride, pixels + row * framebuffer->stride(), packedStride);
+        }
+        pixels = packed.data();
     }
-    if (!SDL_UpdateTexture(m_texture, nullptr, framebuffer->bytes().data(), static_cast<int>(framebuffer->stride()))) {
-        std::cerr << "SDL_UpdateTexture failed: " << SDL_GetError() << '\n';
-        return framebuffer;
-    }
-    if (!SDL_RenderClear(m_renderer)) {
-        std::cerr << "SDL_RenderClear failed: " << SDL_GetError() << '\n';
-        return framebuffer;
-    }
-    if (!SDL_RenderTexture(m_renderer, m_texture, nullptr, nullptr)) {
-        std::cerr << "SDL_RenderTexture failed: " << SDL_GetError() << '\n';
-        return framebuffer;
-    }
-    if (!SDL_RenderPresent(m_renderer)) {
-        std::cerr << "SDL_RenderPresent failed: " << SDL_GetError() << '\n';
-    }
+    glPixelStorei(GL_UNPACK_ROW_LENGTH,
+                  static_cast<GLint>((packed.empty() ? framebuffer->stride() : packedStride) / 4));
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(m_size.width), static_cast<GLsizei>(m_size.height), 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glUseProgram(m_blitProgram);
+    glBindVertexArray(m_blitVao);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    swapBuffers();
     return framebuffer;
+}
+
+bool NativeWindow::makeCurrent() noexcept {
+    return m_isOpen && m_context != nullptr && SDL_GL_MakeCurrent(m_window, m_context);
+}
+
+void NativeWindow::swapBuffers() noexcept {
+    if (m_isOpen && m_context != nullptr) {
+        SDL_GL_SwapWindow(m_window);
+    }
+}
+
+WindowAdapter::GlProcResolver NativeWindow::glProcResolver() const noexcept {
+    return m_context == nullptr ? nullptr : &resolveGlProcedure;
 }
 
 } // namespace huynity::adapters::window

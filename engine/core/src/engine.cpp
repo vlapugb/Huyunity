@@ -6,9 +6,11 @@
 #include "huynity/math/transform.h"
 #include "huynity/objectlib/operations/bounds.h"
 #include "huynity/objectlib/params/point_params.h"
+#include "huynity/renderer/gl_renderer.h"
 
 #include <algorithm>
 #include <chrono>
+#include <iostream>
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
@@ -46,6 +48,13 @@ Engine::Engine(const EngineConfig& config) : m_config{config}, m_fixedUpdate{m_c
     m_window = adapters::window::createWindow(winConfig);
     if (!m_window) {
         throw std::runtime_error("Failed to create window adapter");
+    }
+    if (!m_config.forceHeadless && m_window->hasGpuSurface() && m_window->makeCurrent()) {
+        try {
+            m_glRenderer = std::make_unique<renderer::GlRenderer>(m_window->glProcResolver());
+        } catch (const std::exception& error) {
+            std::cerr << "OpenGL renderer initialization failed, using software renderer: " << error.what() << '\n';
+        }
     }
     const auto sz = m_window->size();
     m_pipeline.resize(runtime::SurfaceSize{.width = sz.width, .height = sz.height});
@@ -180,6 +189,14 @@ void Engine::step(double dt) {
                 core::RenderPreparation::prepareSnapshot(m_scene, passesConfig, winSize.width, winSize.height);
             if (snapshotResult.has_value()) {
                 snapshotResult->clearColor = m_clearColor;
+                if (m_glRenderer && m_window->makeCurrent()) {
+                    if (!m_glRenderer->render(*snapshotResult)) {
+                        std::cerr << "OpenGL frame rendering failed\n";
+                    }
+                    m_window->swapBuffers();
+                    m_inputState.resetDeltas();
+                    return;
+                }
                 auto framebuffer = m_pipeline.acquireFramebuffer();
                 if (framebuffer) {
                     if (m_renderer.render(*snapshotResult, *framebuffer).has_value()) {
@@ -192,6 +209,38 @@ void Engine::step(double dt) {
     }
 
     m_inputState.resetDeltas();
+}
+
+std::unique_ptr<image::ImageBuffer> Engine::captureFrame() {
+    if (m_glRenderer && m_window->makeCurrent()) {
+        const auto size = m_window->size();
+        core::PassesConfig config{
+            .camera3 = m_camera3,
+            .camera2 = m_camera2,
+            .hudEnabled = m_hudEnabled,
+            .world2DFirst = m_world2DFirst,
+            .lighting = m_lighting,
+            .tessellation = {},
+        };
+        auto snapshot = core::RenderPreparation::prepareSnapshot(m_scene, config, size.width, size.height);
+        if (!snapshot) {
+            return nullptr;
+        }
+        snapshot->clearColor = m_clearColor;
+        auto captured = m_glRenderer->capture(*snapshot);
+        return captured ? std::move(*captured) : nullptr;
+    }
+    const auto* headless = dynamic_cast<const adapters::window::HeadlessWindow*>(m_window.get());
+    if (headless == nullptr || headless->lastPresentedFrame() == nullptr) {
+        return nullptr;
+    }
+    const auto& frame = *headless->lastPresentedFrame();
+    auto copy = image::ImageBuffer::create({frame.width(), frame.height(), frame.format(), frame.stride()});
+    if (!copy) {
+        return nullptr;
+    }
+    std::copy(frame.bytes().begin(), frame.bytes().end(), copy->bytes().begin());
+    return std::make_unique<image::ImageBuffer>(std::move(*copy));
 }
 
 void Engine::run() {

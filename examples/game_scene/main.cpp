@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -12,6 +13,7 @@
 #include <numbers>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -63,23 +65,43 @@ core::ObjectId addSphere(huynity::Engine& engine, double radius, const math::Tra
 }
 
 void addPine(huynity::Engine& engine, const math::Vector3& position, double scale) {
-    const auto trunkPosition = math::Vector3{{position[0], position[1] + 0.5 * scale, position[2]}};
-    addBox(engine, math::Vector3{{0.32, 1.0, 0.32}} * scale, trunkPosition, {0.30, 0.17, 0.09, 1.0});
-
-    constexpr std::array<double, 3> heights{1.25, 2.0, 2.65};
-    constexpr std::array<double, 3> widths{1.8, 1.35, 0.9};
-    constexpr std::array<render::Color, 3> colors{
-        render::Color{0.12, 0.32, 0.18, 1.0},
-        render::Color{0.15, 0.39, 0.21, 1.0},
-        render::Color{0.20, 0.46, 0.25, 1.0},
-    };
-    for (std::size_t tier = 0; tier < heights.size(); ++tier) {
-        const auto tierPosition = math::Vector3{{position[0], position[1] + heights[tier] * scale, position[2]}};
-        const auto transform = math::compose(math::translation(tierPosition),
-                                             math::rotation(math::RotationAxis::Y, std::numbers::pi / 4.0));
-        const auto size = math::Vector3{{widths[tier], 0.9, widths[tier]}} * scale;
-        addTransformedBox(engine, size, transform, colors[tier]);
+    addBox(engine, {{0.22 * scale, 1.4 * scale, 0.22 * scale}}, position + math::Vector3{{0, 0.7 * scale, 0}},
+           {0.30, 0.19, 0.11, 1});
+    for (int tier = 0; tier < 3; ++tier) {
+        std::vector<math::Point3> positions;
+        std::vector<objects::TriangleIndices> triangles;
+        const double radius = (1.15 - tier * 0.26) * scale;
+        const double bottom = (0.8 + tier * 0.7) * scale;
+        positions.push_back({{0, bottom + 1.6 * scale, 0}});
+        positions.push_back({{0, bottom, 0}});
+        for (std::uint32_t side = 0; side < 10; ++side) {
+            const double angle = side * std::numbers::pi / 5;
+            positions.push_back({{radius * std::cos(angle), bottom, radius * std::sin(angle)}});
+        }
+        for (std::uint32_t side = 0; side < 10; ++side) {
+            const auto next = (side + 1) % 10 + 2;
+            triangles.push_back({{0, next, side + 2}});
+            triangles.push_back({{1, side + 2, next}});
+        }
+        const auto crown = engine.create<objects::ObjectType::TriangleMesh3>(
+            {.positions = std::move(positions), .triangles = std::move(triangles)});
+        (void)engine.scene().setLocalTransform(crown, math::translation(position));
+        (void)engine.scene().setMaterial(crown, makeMaterial({0.13 + tier * 0.02, 0.29 + tier * 0.04, 0.22, 1}));
     }
+}
+
+void addRoof(huynity::Engine& engine, math::Vector3 center, double width, double depth, double height) {
+    const auto roof = engine.create<objects::ObjectType::TriangleMesh3>({
+        .positions = {{{-width / 2, 0, -depth / 2}},
+                      {{width / 2, 0, -depth / 2}},
+                      {{0, height, -depth / 2}},
+                      {{-width / 2, 0, depth / 2}},
+                      {{width / 2, 0, depth / 2}},
+                      {{0, height, depth / 2}}},
+        .triangles = {{{0, 2, 1}}, {{3, 4, 5}}, {{0, 3, 5}}, {{0, 5, 2}}, {{1, 2, 5}}, {{1, 5, 4}}},
+    });
+    (void)engine.scene().setLocalTransform(roof, math::translation(center));
+    (void)engine.scene().setMaterial(roof, makeMaterial({0.40, 0.18, 0.13, 1}));
 }
 
 render::OrthographicCamera3 makeCamera(double yaw, double pitch, double width) {
@@ -89,7 +111,7 @@ render::OrthographicCamera3 makeCamera(double yaw, double pitch, double width) {
     return {
         .worldToView = math::compose(target, orbit),
         .width = width,
-        .height = width * 0.75,
+        .height = width * 9.0 / 16.0,
         .nearPlane = 0.1,
         .farPlane = 90.0,
     };
@@ -115,8 +137,11 @@ int main(int argc, char* argv[]) {
         std::cout << "Controls: A/D or Left/Right rotate, W/S or Up/Down zoom, Space speeds up the mill, Esc exits.\n";
     }
 
-    huynity::Engine engine({.windowTitle = "Huynity: Windmill Village", .forceHeadless = !continuous});
-    engine.setClearColor({0.34, 0.53, 0.68, 1.0});
+    huynity::Engine engine({.windowSize = {1280, 720},
+                            .windowTitle = "Huynity: Windmill Village",
+                            .forceHeadless = !continuous && screenshotPath.empty()});
+    engine.setClearColor({0.16, 0.22, 0.23, 1.0});
+    engine.setHudEnabled(false);
     engine.setLighting({
         .ambient = {.color = {0.78, 0.86, 1.0, 1.0}, .intensity = 0.42},
         .directional =
@@ -132,6 +157,13 @@ int main(int argc, char* argv[]) {
                     .intensity = 0.18,
                 },
             },
+        .shadows = {.enabled = true,
+                    .resolution = 2048,
+                    .extent = 16,
+                    .center = {{0, 1, 0}},
+                    .depthRange = 45,
+                    .bias = 0.08,
+                    .minVisibility = 0.25},
     });
 
     addBox(engine, {18.4, 0.4, 14.4}, {0.0, -0.65, 0.0}, {0.28, 0.19, 0.11, 1.0});
@@ -145,15 +177,24 @@ int main(int argc, char* argv[]) {
     addSphere(engine, 2.0, waterTransform, {0.16, 0.48, 0.65, 1.0});
 
     addBox(engine, {3.4, 2.4, 2.8}, {-1.8, 1.2, 0.2}, {0.88, 0.76, 0.55, 1.0});
-    constexpr double roofAngle = 0.54;
-    addTransformedBox(engine, {2.3, 0.18, 3.25},
-                      math::compose(math::translation(math::Vector3{{-2.8, 2.98, 0.2}}),
-                                    math::rotation(math::RotationAxis::Z, roofAngle)),
-                      {0.58, 0.16, 0.10, 1.0});
-    addTransformedBox(engine, {2.3, 0.18, 3.25},
-                      math::compose(math::translation(math::Vector3{{-0.8, 2.98, 0.2}}),
-                                    math::rotation(math::RotationAxis::Z, -roofAngle)),
-                      {0.58, 0.16, 0.10, 1.0});
+    addRoof(engine, {{-1.8, 2.4, 0.2}}, 4.0, 3.3, 1.35);
+    for (const double x : {-3.4, -0.2}) {
+        addBox(engine, {0.12, 2.4, 0.12}, {x, 1.2, -1.25}, {0.26, 0.19, 0.12, 1});
+    }
+    addBox(engine, {3.4, 0.12, 0.12}, {-1.8, 2.22, -1.25}, {0.26, 0.19, 0.12, 1});
+    // Дома вдоль дальней улицы, каждый с цельной двускатной крышей.
+    for (const double x : {1.6, 5.1}) {
+        addBox(engine, {2.4, 1.7, 2.2}, {x, 0.85, 4.0}, {0.82, 0.69, 0.48, 1});
+        addRoof(engine, {{x, 1.7, 4.0}}, 2.9, 2.65, 1.05);
+        addBox(engine, {0.55, 1.1, 0.08}, {x, 0.55, 2.86}, {0.28, 0.22, 0.15, 1});
+        for (const double side : {-0.75, 0.75}) {
+            addBox(engine, {0.4, 0.5, 0.08}, {x + side, 1.1, 2.86}, {0.22, 0.36, 0.36, 1});
+        }
+    }
+    // Дощатый причал опирается на берег, а не висит над прудом.
+    for (int plank = 0; plank < 9; ++plank) {
+        addBox(engine, {1.1, 0.12, 0.22}, {2.5, 0.15, -0.2 + plank * 0.25}, {0.48, 0.34, 0.21, 1});
+    }
     addBox(engine, {0.78, 1.45, 0.12}, {-1.8, 0.73, -1.25}, {0.29, 0.16, 0.09, 1.0});
     addBox(engine, {0.68, 0.72, 0.10}, {-2.9, 1.55, -1.26}, {0.25, 0.55, 0.67, 1.0});
     addBox(engine, {0.68, 0.72, 0.10}, {-0.7, 1.55, -1.26}, {0.25, 0.55, 0.67, 1.0});
@@ -200,10 +241,25 @@ int main(int argc, char* argv[]) {
         addSphere(engine, 0.32, transform, {0.43, 0.45, 0.40, 1.0});
     }
 
+    // Огород и цветники связывают дома с землёй и оживляют передний план.
+    addBox(engine, {2.8, 0.08, 2.0}, {3.0, 0.04, -4.3}, {0.28, 0.20, 0.13, 1});
+    for (int row = 0; row < 4; ++row) {
+        for (int plant = 0; plant < 7; ++plant) {
+            addBox(engine, {0.22, 0.2, 0.22}, {1.85 + plant * 0.38, 0.18, -4.9 + row * 0.4},
+                   {0.26, 0.43 + row * 0.03, 0.19, 1});
+        }
+    }
+    for (const double x : {-2.9, -0.7}) {
+        addBox(engine, {0.9, 0.15, 0.3}, {x, 1.15, -1.45}, {0.38, 0.26, 0.16, 1});
+        for (int flower = 0; flower < 5; ++flower) {
+            addBox(engine, {0.12, 0.18, 0.12}, {x - 0.3 + flower * 0.15, 1.28, -1.45}, {0.76, 0.57, 0.26, 1});
+        }
+    }
+
     double rotorAngle = 0.0;
     double cameraYaw = -0.52;
     double cameraPitch = -0.58;
-    double cameraWidth = 23.0;
+    double cameraWidth = 25.0;
     int stepCount = 0;
     engine.setCamera(makeCamera(cameraYaw, cameraPitch, cameraWidth));
 
@@ -253,14 +309,18 @@ int main(int argc, char* argv[]) {
     });
 
     engine.step(0.0);
-    engine.run();
-
     if (!screenshotPath.empty()) {
-        if (const auto* headless = dynamic_cast<const window::HeadlessWindow*>(&engine.window())) {
-            if (const auto* frame = headless->lastPresentedFrame()) {
-                savePpm(*frame, screenshotPath);
-                std::cout << "Saved screenshot to " << screenshotPath << "\n";
-            }
+        auto frame = engine.captureFrame();
+        if (!frame) {
+            throw std::runtime_error("Cannot capture village frame");
+        }
+        savePpm(*frame, screenshotPath);
+    }
+    if (continuous) {
+        engine.run();
+    } else {
+        for (int step = 0; step < 5; ++step) {
+            engine.step(1.0 / 60.0);
         }
     }
 

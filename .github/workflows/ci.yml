@@ -27,7 +27,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++-14
+          sudo apt-get install -y cmake ninja-build g++-14 libgl1-mesa-dev
 
       - name: Build project with adapters and examples
         run: ./tools/scripts/build.sh
@@ -42,6 +42,8 @@ jobs:
           ./build/examples/hello_cube/huynity_hello_cube
           ./build/examples/renderer_gallery/huynity_renderer_gallery
           ./build/examples/game_scene/huynity_game_scene
+          ./build/examples/sunlit_sanctuary/huynity_sunlit_sanctuary
+          ./build/examples/canyon_observatory/huynity_canyon_observatory
 
   container-check:
     name: Container Build & Container Tests

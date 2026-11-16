@@ -115,6 +115,28 @@ void cameraTransformsAffectBoth3dCullingModes() {
     CHECK(perspectiveResult->drawItems.empty());
 }
 
+void perspectiveAspectIncludesWideScreenBounds() {
+    core::Scene scene;
+    // Плита на z in [2, 4], смещённая вправо на x in [1.8, 3.0]:
+    // на z = 4 при fov = pi/2 и aspect = 16/9 допустимая полуширина ~ 7.11, плита видима,
+    // хотя на z = 2 и aspect = 1.0 она была бы ошибочно отброшена.
+    auto tile = scene.createObject<objects::ObjectType::Box3>({.size = {{1.2, 0.4, 2.0}}});
+    CHECK(tile.has_value());
+    CHECK(scene.setLocalTransform(*tile, math::translation(math::Vector3{{2.4, 0.0, 3.0}})).has_value());
+
+    core::PassesConfig config;
+    config.camera3 = render::PerspectiveCamera3{
+        .worldToView = math::Transform3{},
+        .verticalFieldOfView = std::numbers::pi / 2.0,
+        .nearPlane = 0.1,
+        .farPlane = 50.0,
+    };
+    config.hudEnabled = false;
+    auto snapshot = core::RenderPreparation::prepareSnapshot(scene, config, 1280, 720);
+    CHECK(snapshot.has_value());
+    CHECK(std::get<render::World3DPass>(snapshot->passes[0]).drawItems.size() == 1);
+}
+
 int main() {
     try {
         world3dContainsAllVisibleStateAfterCommands();
@@ -122,6 +144,7 @@ int main() {
         world2dUsesIndependentCameraAndVisibility();
         perspectiveCullsDepthAndHorizontalBounds();
         cameraTransformsAffectBoth3dCullingModes();
+        perspectiveAspectIncludesWideScreenBounds();
         std::cout << "draw_lists: OK\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

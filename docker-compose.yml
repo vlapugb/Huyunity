@@ -59,14 +59,14 @@ services:
       - ./output:/app/output:z
     command: web
 
-  corridor:
+  sanctuary:
     build: .
     image: huynity:latest
-    container_name: huynity-corridor
+    container_name: huynity-sanctuary
     ports:
       - "6083:6080"
     environment:
-      - EXAMPLE=first_person_corridor
+      - EXAMPLE=sunlit_sanctuary
       - RESOLUTION=800x600
       - SDL_VIDEO_DRIVER=x11
       - XDG_RUNTIME_DIR=/tmp/runtime-dir
@@ -74,14 +74,14 @@ services:
       - ./output:/app/output:z
     command: web
 
-  third-person:
+  observatory:
     build: .
     image: huynity:latest
-    container_name: huynity-third-person
+    container_name: huynity-observatory
     ports:
       - "6084:6080"
     environment:
-      - EXAMPLE=third_person_arena
+      - EXAMPLE=canyon_observatory
       - RESOLUTION=800x600
       - SDL_VIDEO_DRIVER=x11
       - XDG_RUNTIME_DIR=/tmp/runtime-dir
