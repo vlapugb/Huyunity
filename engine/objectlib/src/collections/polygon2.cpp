@@ -1,31 +1,35 @@
 #include "huynity/objectlib/collections/polygon2.h"
 
-#include "huynity/objectlib/detail/validation.h"
+#include "huynity/math/validation.h"
+#include "huynity/objectlib/errors.h"
 
 #include <cmath>
 #include <utility>
 
 namespace huynity::objectlib {
 
-CreateResult<Polygon2> Polygon2::create(Polygon2Params params) {
-    auto& points = params.contour;
-    if (!detail::finitePoints<2>(points)) {
+CreateResult<Polygon2> Polygon2::create(Polygon2::Params params) {
+    return create(std::move(params.contour));
+}
+
+CreateResult<Polygon2> Polygon2::create(std::vector<math::Point2>&& contour) {
+    if (!math::finitePoints<2>(contour)) {
         return std::unexpected(CreateError{CreateErrorCode::NonFiniteParameter});
     }
-    if (points.size() > 1 && points.front() == points.back()) {
-        points.pop_back();
+    if (contour.size() > 1 && contour.front() == contour.back()) {
+        contour.pop_back();
     }
-    if (points.size() < 3) {
+    if (contour.size() < 3) {
         return std::unexpected(CreateError{CreateErrorCode::TooFewVertices});
     }
-    for (std::size_t i = 0; i < points.size(); ++i) {
-        const auto& a = points[i];
-        const auto& b = points[(i + 1) % points.size()];
-        const auto& c = points[(i + 2) % points.size()];
+    for (std::size_t i = 0; i < contour.size(); ++i) {
+        const auto& a = contour[i];
+        const auto& b = contour[(i + 1) % contour.size()];
+        const auto& c = contour[(i + 2) % contour.size()];
         if (a == b) {
             return std::unexpected(CreateError{CreateErrorCode::DegenerateGeometry});
         }
-        const auto turn = detail::orientation(a, b, c);
+        const auto turn = math::orientation(a, b, c);
         if (!std::isfinite(turn)) {
             return std::unexpected(CreateError{CreateErrorCode::NumericalFailure});
         }
@@ -37,23 +41,23 @@ CreateResult<Polygon2> Polygon2::create(Polygon2Params params) {
                 return std::unexpected(CreateError{CreateErrorCode::SelfIntersection});
             }
         }
-        for (std::size_t j = i + 1; j < points.size(); ++j) {
-            if (j == i + 1 || (i == 0 && j + 1 == points.size())) {
+        for (std::size_t j = i + 1; j < contour.size(); ++j) {
+            if (j == i + 1 || (i == 0 && j + 1 == contour.size())) {
                 continue;
             }
-            if (detail::segmentsIntersect(a, b, points[j], points[(j + 1) % points.size()])) {
+            if (math::segmentsIntersect(a, b, contour[j], contour[(j + 1) % contour.size()])) {
                 return std::unexpected(CreateError{CreateErrorCode::SelfIntersection});
             }
         }
     }
-    const auto area = detail::signedAreaTwice(points);
+    const auto area = math::signedAreaTwice(contour);
     if (!std::isfinite(area)) {
         return std::unexpected(CreateError{CreateErrorCode::NumericalFailure});
     }
     if (area == 0) {
         return std::unexpected(CreateError{CreateErrorCode::DegenerateGeometry});
     }
-    return Polygon2(std::move(points));
+    return Polygon2(std::move(contour));
 }
 
 } // namespace huynity::objectlib

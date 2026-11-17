@@ -48,10 +48,10 @@ int main(int argc, char* argv[]) {
     using huynity::core::Mobility;
     using huynity::math::RotationAxis;
     using huynity::math::Vector3;
-    using huynity::objectlib::ObjectType;
+    namespace objects = huynity::objectlib;
     namespace render = huynity::render_contracts;
 
-    const auto cube = engine.create<ObjectType::Box3>({.size = {3.0, 3.0, 3.0}}, Mobility::Dynamic);
+    const auto cube = engine.create(objects::Box3::Params{.size = {3.0, 3.0, 3.0}}, Mobility::Dynamic);
     (void)engine.scene().setMaterial(cube, std::make_shared<const render::Material>(render::Material{
                                                .color = {0.95, 0.38, 0.12, 1.0},
                                            }));

@@ -239,7 +239,7 @@ void scenarioStatic() {
 
     const auto material = makeMaterial(0.8, 0.2, 0.2);
     for (std::size_t i = 0; i < OBJECT_COUNT; ++i) {
-        auto created = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{1.0, 1.0, 1.0}}});
+        auto created = scene.createObject(objects::Box3::Params{.size = {1.0, 1.0, 1.0}});
         CHECK(created.has_value());
         const auto id = *created;
         CHECK(scene.setMobility(id, core::Mobility::Static).has_value());
@@ -426,7 +426,7 @@ void scenarioMovingInstances() {
     core::Scene scene;
 
     // Исходная разделяемая геометрия (Box3)
-    auto sourceBox = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{1.0, 1.0, 1.0}}});
+    auto sourceBox = scene.createObject(objects::Box3::Params{.size = {1.0, 1.0, 1.0}});
     CHECK(sourceBox.has_value());
     const auto sourceId = *sourceBox;
 
@@ -644,7 +644,7 @@ void scenarioGeometryEdits() {
     const auto material = makeMaterial(0.2, 0.4, 0.8);
     for (std::size_t i = 0; i < OBJECT_COUNT; ++i) {
         const double sz = 1.0 + static_cast<double>(i) * 0.01;
-        auto created = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{sz, sz, sz}}});
+        auto created = scene.createObject(objects::Box3::Params{.size = {sz, sz, sz}});
         CHECK(created.has_value());
         const auto id = *created;
         const double x = static_cast<double>(i % 10) * 2.0 - 9.0;
@@ -782,7 +782,7 @@ void scenario2DOnly() {
 
     const auto worldMaterial = makeMaterial(0.1, 0.6, 0.9);
     for (std::size_t i = 0; i < OBJECT_COUNT_2D; ++i) {
-        auto created = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{1.5, 1.5}}});
+        auto created = scene.createObject(objects::Rectangle2::Params{.size = {1.5, 1.5}});
         CHECK(created.has_value());
         const auto id = *created;
         const double x = static_cast<double>(i % 10) * 2.5 - 11.25;
@@ -799,11 +799,11 @@ void scenario2DOnly() {
     hudObjects.reserve(HUD_COUNT);
     const auto hudMaterial = makeMaterial(1.0, 0.9, 0.1, 0.8);
     for (std::size_t i = 0; i < HUD_COUNT; ++i) {
-        auto created = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{6.0, 4.0}}});
+        auto created = scene.createObject(objects::Rectangle2::Params{.size = {6.0, 4.0}});
         CHECK(created.has_value());
         const auto id = *created;
         const double x = static_cast<double>(i) * 6.0 + 3.0;
-        CHECK(scene.setLocalTransform(id, math::translation(math::Vector2{{x, 5.0}})).has_value());
+        CHECK(scene.setLocalTransform(id, math::translation(math::Vector2{x, 5.0})).has_value());
         CHECK(scene.setRenderProperties(id, core::RenderSpace::Hud, 0, static_cast<std::int32_t>(i)).has_value());
         CHECK(scene.setMaterial(id, hudMaterial).has_value());
         hudObjects.push_back(id);
@@ -939,7 +939,7 @@ void scenario3DWithHud() {
     core::Scene scene;
     const auto worldMaterial = makeMaterial(0.7, 0.3, 0.3);
     for (std::size_t i = 0; i < OBJECT_COUNT_3D; ++i) {
-        auto created = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{1.0, 1.0, 1.0}}});
+        auto created = scene.createObject(objects::Box3::Params{.size = {1.0, 1.0, 1.0}});
         CHECK(created.has_value());
         const auto id = *created;
         const double x = static_cast<double>(i % 10) * 2.0 - 9.0;
@@ -951,11 +951,11 @@ void scenario3DWithHud() {
 
     const auto hudMaterial = makeMaterial(1.0, 1.0, 0.0, 0.85);
     for (std::size_t i = 0; i < HUD_COUNT; ++i) {
-        auto created = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{5.0, 3.0}}});
+        auto created = scene.createObject(objects::Rectangle2::Params{.size = {5.0, 3.0}});
         CHECK(created.has_value());
         const auto id = *created;
         const double x = static_cast<double>(i) * 5.0 + 3.0;
-        CHECK(scene.setLocalTransform(id, math::translation(math::Vector2{{x, 4.0}})).has_value());
+        CHECK(scene.setLocalTransform(id, math::translation(math::Vector2{x, 4.0})).has_value());
         CHECK(scene.setRenderProperties(id, core::RenderSpace::Hud, 0, static_cast<std::int32_t>(i)).has_value());
         CHECK(scene.setMaterial(id, hudMaterial).has_value());
     }
@@ -1117,7 +1117,7 @@ void scenarioSlowRenderer() {
     SimpleSyncPresentationPort presentation;
 
     core::Scene scene;
-    auto box = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{2.0, 2.0, 2.0}}});
+    auto box = scene.createObject(objects::Box3::Params{.size = {2.0, 2.0, 2.0}});
     CHECK(box.has_value());
 
     core::PassesConfig config;

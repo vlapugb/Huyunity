@@ -117,7 +117,7 @@ SceneSetup create3DScene() {
     SceneSetup setup;
 
     // 1. Исходный 3D-объект: куб 4x4x4 в начале координат
-    auto sourceBox = setup.scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{4.0, 4.0, 4.0}}});
+    auto sourceBox = setup.scene.createObject(objects::Box3::Params{.size = {4.0, 4.0, 4.0}});
     CHECK(sourceBox.has_value());
     setup.sourceId = *sourceBox;
 
@@ -146,7 +146,7 @@ SceneSetup create3DScene() {
     CHECK(setup.scene.setVisibility(setup.sourceId, false).has_value());
 
     // 4. Элемент HUD (RenderSpace::Hud) в экранных пикселях: жёлтый прямоугольник 10x6 с центром в (16, 32)
-    auto hudElement = setup.scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{10.0, 6.0}}});
+    auto hudElement = setup.scene.createObject(objects::Rectangle2::Params{.size = {10.0, 6.0}});
     CHECK(hudElement.has_value());
     setup.hudId = *hudElement;
     CHECK(setup.scene.setLocalTransform(setup.hudId, math::translation(math::Vector2{{16.0, 32.0}})).has_value());

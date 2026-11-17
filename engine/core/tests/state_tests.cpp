@@ -19,7 +19,7 @@ namespace render = huynity::render_contracts;
     } while (false)
 
 core::ObjectId createObject(core::Scene& scene) {
-    auto result = scene.createObject<objects::ObjectType::Point3>({.coordinates = {1, 2, 3}});
+    auto result = scene.createObject(objects::Point3::Params{.coordinates = {1, 2, 3}});
     CHECK(result.has_value());
     return *result;
 }
@@ -60,7 +60,7 @@ void staticObjectCanReplaceGeometry() {
     const auto oldVersion = scene.find(id)->geometryVersion;
     const auto before = scene.find(id)->revisions;
 
-    CHECK(scene.setGeometry(id, objects::Geometry{objects::Point3{{7, 8, 9}}}).has_value());
+    CHECK(scene.setGeometry(id, *createGeometry(objects::Point3::Params{.coordinates = {7, 8, 9}})).has_value());
     const auto* after = scene.find(id);
     CHECK(after->geometry != oldGeometry);
     CHECK(after->geometryVersion == oldVersion + 1);
@@ -71,7 +71,7 @@ void staticObjectCanReplaceGeometry() {
     CHECK(after->revisions.worldTransform == before.worldTransform);
     CHECK(after->revisions.material == before.material);
     CHECK(after->revisions.visibility == before.visibility);
-    CHECK(std::get<objects::Point3>(*oldGeometry).coordinates == std::array<double, 3>{1, 2, 3});
+    CHECK(std::get<objects::Point3>(*oldGeometry).coordinates() == math::Point3{1, 2, 3});
 }
 
 void visualChangesHaveIndependentRevisions() {

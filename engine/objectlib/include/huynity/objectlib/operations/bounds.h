@@ -1,5 +1,6 @@
 #pragma once
 
+#include "huynity/math/validation.h"
 #include "huynity/objectlib/geometry.h"
 
 #include <algorithm>
@@ -20,22 +21,22 @@ using RuntimeBoundsResult = GeometryResult<BoundsGeometry>;
 namespace detail {
 
 template <std::size_t dimension>
-BoundsResult<dimension> pointBounds(std::span<const Point<dimension>> points) {
+BoundsResult<dimension> pointBounds(std::span<const math::Point<dimension>> points) {
     if (points.empty()) {
         return std::unexpected(GeometryError{GeometryErrorCode::EmptyGeometry});
     }
-    if (!finitePoints<dimension>(points)) {
+    if (!math::finitePoints(points)) {
         return std::unexpected(GeometryError{GeometryErrorCode::InvalidGeometry});
     }
-    Point<dimension> min = points.front();
-    Point<dimension> max = min;
+    math::Point<dimension> min = points.front();
+    math::Point<dimension> max = min;
     for (const auto& point : points) {
         for (std::size_t i = 0; i < dimension; ++i) {
             min[i] = std::min(min[i], point[i]);
             max[i] = std::max(max[i], point[i]);
         }
     }
-    auto result = Aabb<dimension>::create({min, max});
+    auto result = Aabb<dimension>::create(min, max);
     if (!result) {
         return std::unexpected(GeometryError{GeometryErrorCode::NumericalFailure});
     }
@@ -43,8 +44,8 @@ BoundsResult<dimension> pointBounds(std::span<const Point<dimension>> points) {
 }
 
 template <std::size_t dimension>
-BoundsResult<dimension> symmetricBounds(const Vector<dimension>& halfSize) {
-    std::array<Point<dimension>, 2> corners{};
+BoundsResult<dimension> symmetricBounds(const math::Vector<dimension>& halfSize) {
+    std::array<math::Point<dimension>, 2> corners{};
     for (std::size_t i = 0; i < dimension; ++i) {
         corners[0][i] = -halfSize[i];
         corners[1][i] = halfSize[i];
@@ -53,9 +54,9 @@ BoundsResult<dimension> symmetricBounds(const Vector<dimension>& halfSize) {
 }
 
 template <std::size_t dimension>
-BoundsResult<dimension> sizeBounds(const Vector<dimension>& size) {
+BoundsResult<dimension> sizeBounds(const math::Vector<dimension>& size) {
     const auto halfSize = size * 0.5;
-    for (double value : halfSize.components) {
+    for (double value : halfSize) {
         if (value == 0) {
             return std::unexpected(GeometryError{GeometryErrorCode::NumericalFailure});
         }
@@ -66,7 +67,8 @@ BoundsResult<dimension> sizeBounds(const Vector<dimension>& size) {
 
 template <std::size_t dimension>
 [[nodiscard]] BoundsResult<dimension> bounds(const Point<dimension>& point) {
-    return detail::pointBounds<dimension>(std::span<const Point<dimension>>{&point, 1});
+    const std::array<math::Point<dimension>, 1> points{point.coordinates()};
+    return detail::pointBounds<dimension>(points);
 }
 
 template <std::size_t dimension>
@@ -98,20 +100,25 @@ template <std::size_t dimension>
 [[nodiscard]] inline BoundsResult<2> bounds(const Polygon2& polygon) {
     return detail::pointBounds<2>(polygon.contour());
 }
+
 [[nodiscard]] inline BoundsResult<2> bounds(const Rectangle2& rectangle) {
     return detail::sizeBounds(rectangle.size());
 }
+
 [[nodiscard]] inline BoundsResult<3> bounds(const Box3& box) {
     return detail::sizeBounds(box.size());
 }
+
 [[nodiscard]] inline BoundsResult<2> bounds(const Circle2& circle) {
-    return detail::symmetricBounds(Vector2{{circle.radius(), circle.radius()}});
+    return detail::symmetricBounds(math::Vector2{{circle.radius(), circle.radius()}});
 }
+
 [[nodiscard]] inline BoundsResult<2> bounds(const Disk2& disk) {
-    return detail::symmetricBounds(Vector2{{disk.radius(), disk.radius()}});
+    return detail::symmetricBounds(math::Vector2{{disk.radius(), disk.radius()}});
 }
+
 [[nodiscard]] inline BoundsResult<3> bounds(const Sphere3& sphere) {
-    return detail::symmetricBounds(Vector3{{sphere.radius(), sphere.radius(), sphere.radius()}});
+    return detail::symmetricBounds(math::Vector3{{sphere.radius(), sphere.radius(), sphere.radius()}});
 }
 
 } // namespace huynity::objectlib

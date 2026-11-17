@@ -47,8 +47,8 @@ void testShow3DObject() {
         .forceHeadless = true,
     }};
 
-    const huynity::objectlib::Box3Params boxParams{.size = {4.0, 4.0, 4.0}};
-    const auto boxId = engine.create<huynity::objectlib::ObjectType::Box3>(boxParams);
+    const huynity::objectlib::Box3::Params boxParams{.size = {4.0, 4.0, 4.0}};
+    const auto boxId = engine.create(boxParams);
 
     CHECK(!engine.camera3().has_value());
     CHECK(!engine.camera2().has_value());
@@ -112,8 +112,8 @@ void testShow2DObject() {
         .forceHeadless = true,
     }};
 
-    const huynity::objectlib::Rectangle2Params rectParams{.size = {20.0, 10.0}};
-    const auto rectId = engine.create<huynity::objectlib::ObjectType::Rectangle2>(rectParams);
+    const huynity::objectlib::Rectangle2::Params rectParams{.size = {20.0, 10.0}};
+    const auto rectId = engine.create(rectParams);
 
     CHECK(!engine.camera3().has_value());
     CHECK(!engine.camera2().has_value());
@@ -165,22 +165,22 @@ void testShow2DObject() {
 
 void testPreviewFunction() {
     // 3D Sphere preview
-    auto sphere = huynity::objectlib::Sphere3::create({.radius = 2.5});
+    auto sphere = huynity::objectlib::Sphere3::create(2.5);
     CHECK(sphere.has_value());
     huynity::Engine::preview(*sphere, huynity::EngineConfig{.forceHeadless = true});
 
     // 3D Box preview
-    auto box = huynity::objectlib::Box3::create({.size = {3.0, 3.0, 3.0}});
+    auto box = huynity::objectlib::Box3::create({3.0, 3.0, 3.0});
     CHECK(box.has_value());
     huynity::Engine::preview(*box, huynity::EngineConfig{.forceHeadless = true});
 
     // 2D Disk preview
-    auto disk = huynity::objectlib::Disk2::create({.radius = 4.0});
+    auto disk = huynity::objectlib::Disk2::create(4.0);
     CHECK(disk.has_value());
     huynity::Engine::preview(*disk, huynity::EngineConfig{.forceHeadless = true});
 
     // 2D Rectangle preview
-    auto rect = huynity::objectlib::Rectangle2::create({.size = {12.0, 8.0}});
+    auto rect = huynity::objectlib::Rectangle2::create({12.0, 8.0});
     CHECK(rect.has_value());
     huynity::Engine::preview(*rect, huynity::EngineConfig{.forceHeadless = true});
 }

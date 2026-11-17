@@ -1,20 +1,15 @@
 #pragma once
 
+#include "huynity/math/dimension.h"
 #include "huynity/math/vector.h"
 
-#include <array>
 #include <cmath>
 
 namespace huynity::math {
 
 template <std::size_t dimension>
-    requires Dimension<dimension>
-struct Point {
-    std::array<double, dimension> coordinates{};
-
-    constexpr double& operator[](std::size_t i) noexcept { return coordinates[i]; }
-    constexpr double operator[](std::size_t i) const noexcept { return coordinates[i]; }
-    friend constexpr bool operator==(const Point&, const Point&) = default;
+struct Point : detail::DimContainer<double, dimension> {
+    using detail::DimContainer<double, dimension>::DimContainer;
 };
 
 using Point2 = Point<2>;
@@ -35,16 +30,6 @@ template <std::size_t dimension>
         p[i] += v[i];
     }
     return p;
-}
-
-template <std::size_t dimension>
-[[nodiscard]] bool isFinite(const Point<dimension>& p) noexcept {
-    for (double value : p.coordinates) {
-        if (!std::isfinite(value)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 } // namespace huynity::math

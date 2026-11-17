@@ -1,4 +1,5 @@
 #include "huynity/core/scene.h"
+#include "huynity/objectlib/shapes/sphere3.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -17,7 +18,7 @@ namespace objects = huynity::objectlib;
     } while (false)
 
 core::ObjectId createSphere(core::Scene& scene, double radius = 2) {
-    auto result = scene.createObject<objects::ObjectType::Sphere3>({.radius = radius});
+    auto result = scene.createObject(objects::Sphere3::Params{.radius = radius});
     CHECK(result.has_value());
     return *result;
 }
@@ -61,7 +62,7 @@ void geometryChangeInvalidatesOnlyNewVersion() {
     const auto id = createSphere(scene);
     auto initial = scene.tessellation(id);
     CHECK(initial.has_value());
-    auto replacement = objects::createObject<objects::ObjectType::Sphere3>({.radius = 3});
+    auto replacement = objects::createObject(objects::Sphere3::Params{.radius = 3});
     CHECK(replacement.has_value());
     CHECK(scene.setGeometry(id, objects::Geometry{std::move(*replacement)}).has_value());
     CHECK(scene.find(id)->dirty.tessellation);

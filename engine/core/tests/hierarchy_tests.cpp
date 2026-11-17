@@ -16,7 +16,7 @@ namespace objects = huynity::objectlib;
     } while (false)
 
 core::ObjectId createObject(core::Scene& scene) {
-    auto result = scene.createObject<objects::ObjectType::Point3>({.coordinates = {1, 2, 3}});
+    auto result = scene.createObject(objects::Point3::Params{.coordinates = {1, 2, 3}});
     CHECK(result.has_value());
     return *result;
 }
@@ -81,7 +81,7 @@ void subtreeRemovalInvalidatesEveryId() {
 }
 
 core::ObjectId createObject2(core::Scene& scene) {
-    auto result = scene.createObject<objects::ObjectType::Point2>({.coordinates = {1, 2}});
+    auto result = scene.createObject(objects::Point2::Params{.coordinates = {1, 2}});
     CHECK(result.has_value());
     return *result;
 }

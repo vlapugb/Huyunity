@@ -1,4 +1,5 @@
 #include "huynity/core/scene.h"
+#include "huynity/objectlib/primitives/point.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -18,7 +19,7 @@ namespace objects = huynity::objectlib;
     } while (false)
 
 core::ObjectId createObject(core::Scene& scene) {
-    auto result = scene.createObject<objects::ObjectType::Point3>({.coordinates = {1, 2, 3}});
+    auto result = scene.createObject(objects::Point3::Params{.coordinates = {1, 2, 3}});
     CHECK(result.has_value());
     return *result;
 }
@@ -71,8 +72,8 @@ void invalidCommandDoesNotMutateOrStopBatch() {
 void creationCommandsReturnIdsAndErrors() {
     core::Scene scene;
     const std::vector<core::CommandRequest> requests{
-        {100, core::CreateObjectCommand{objects::Point3Params{.coordinates = {1, 2, 3}}}},
-        {101, core::CreateObjectCommand{objects::Circle2Params{.radius = 0}}},
+        {100, core::CreateObjectCommand{objects::Point3::Params{.coordinates = {1, 2, 3}}}},
+        {101, core::CreateObjectCommand{objects::Circle2::Params{.radius = 0}}},
     };
     const auto results = scene.apply(requests);
     CHECK(results.size() == 2);

@@ -18,14 +18,14 @@ namespace render = huynity::render_contracts;
     } while (false)
 
 core::ObjectId createRectangle(core::Scene& scene, core::RenderSpace space, int layer, int order) {
-    auto id = scene.createObject<objects::ObjectType::Rectangle2>({.size = {{2, 2}}});
+    auto id = scene.createObject(objects::Rectangle2::Params{.size = {2, 2}});
     CHECK(id.has_value());
     CHECK(scene.setRenderProperties(*id, space, layer, order).has_value());
     return *id;
 }
 
 core::ObjectId createBox(core::Scene& scene) {
-    auto id = scene.createObject<objects::ObjectType::Box3>({.size = {{1, 1, 1}}});
+    auto id = scene.createObject(objects::Box3::Params{.size = {1, 1, 1}});
     CHECK(id.has_value());
     return *id;
 }

@@ -15,6 +15,8 @@ template <std::size_t dimension>
         return result;
     }
     result.reserve(points.size() - 1 + polyline.closed());
+    // Polyline::create guarantees finite vertices, so Segment::create cannot fail
+    // here.
     for (std::size_t i = 1; i < points.size(); ++i) {
         result.push_back(*Segment<dimension>::create({points[i - 1], points[i]}));
     }

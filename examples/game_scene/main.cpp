@@ -43,7 +43,7 @@ std::shared_ptr<const render::Material> makeMaterial(const render::Color& color)
 
 core::ObjectId addTransformedBox(huynity::Engine& engine, const math::Vector3& size, const math::Transform3& transform,
                                  const render::Color& color) {
-    const auto id = engine.create<objects::ObjectType::Box3>({.size = size});
+    const auto id = engine.create(objects::Box3::Params{.size = size});
     (void)engine.scene().setLocalTransform(id, transform);
     (void)engine.scene().setMaterial(id, makeMaterial(color));
     return id;
@@ -56,15 +56,15 @@ core::ObjectId addBox(huynity::Engine& engine, const math::Vector3& size, const 
 
 core::ObjectId addSphere(huynity::Engine& engine, double radius, const math::Transform3& transform,
                          const render::Color& color) {
-    const auto id = engine.create<objects::ObjectType::Sphere3>({.radius = radius});
+    const auto id = engine.create(objects::Sphere3::Params{.radius = radius});
     (void)engine.scene().setLocalTransform(id, transform);
     (void)engine.scene().setMaterial(id, makeMaterial(color));
     return id;
 }
 
 void addPine(huynity::Engine& engine, const math::Vector3& position, double scale) {
-    const auto trunkPosition = math::Vector3{{position[0], position[1] + 0.5 * scale, position[2]}};
-    addBox(engine, math::Vector3{{0.32, 1.0, 0.32}} * scale, trunkPosition, {0.30, 0.17, 0.09, 1.0});
+    const auto trunkPosition = math::Vector3{position[0], position[1] + 0.5 * scale, position[2]};
+    addBox(engine, math::Vector3{0.32, 1.0, 0.32} * scale, trunkPosition, {0.30, 0.17, 0.09, 1.0});
 
     constexpr std::array<double, 3> heights{1.25, 2.0, 2.65};
     constexpr std::array<double, 3> widths{1.8, 1.35, 0.9};
@@ -74,16 +74,16 @@ void addPine(huynity::Engine& engine, const math::Vector3& position, double scal
         render::Color{0.20, 0.46, 0.25, 1.0},
     };
     for (std::size_t tier = 0; tier < heights.size(); ++tier) {
-        const auto tierPosition = math::Vector3{{position[0], position[1] + heights[tier] * scale, position[2]}};
+        const auto tierPosition = math::Vector3{position[0], position[1] + heights[tier] * scale, position[2]};
         const auto transform = math::compose(math::translation(tierPosition),
                                              math::rotation(math::RotationAxis::Y, std::numbers::pi / 4.0));
-        const auto size = math::Vector3{{widths[tier], 0.9, widths[tier]}} * scale;
+        const auto size = math::Vector3{widths[tier], 0.9, widths[tier]} * scale;
         addTransformedBox(engine, size, transform, colors[tier]);
     }
 }
 
 render::OrthographicCamera3 makeCamera(double yaw, double width) {
-    const auto target = math::translation(math::Vector3{{0.0, -1.0, 34.0}});
+    const auto target = math::translation(math::Vector3{0.0, -1.0, 34.0});
     const auto orbit =
         math::compose(math::rotation(math::RotationAxis::X, -0.58), math::rotation(math::RotationAxis::Y, yaw));
     return {
@@ -122,12 +122,12 @@ int main(int argc, char* argv[]) {
         .directional =
             {
                 {
-                    .direction = math::Vector3{{-0.7, -1.0, 0.65}},
+                    .direction = math::Vector3{-0.7, -1.0, 0.65},
                     .color = {1.0, 0.91, 0.75, 1.0},
                     .intensity = 0.82,
                 },
                 {
-                    .direction = math::Vector3{{0.8, -0.3, -0.5}},
+                    .direction = math::Vector3{0.8, -0.3, -0.5},
                     .color = {0.55, 0.72, 1.0, 1.0},
                     .intensity = 0.18,
                 },
@@ -137,21 +137,21 @@ int main(int argc, char* argv[]) {
     addBox(engine, {18.4, 0.4, 14.4}, {0.0, -0.65, 0.0}, {0.28, 0.19, 0.11, 1.0});
     addBox(engine, {18.0, 0.5, 14.0}, {0.0, -0.25, 0.0}, {0.38, 0.55, 0.25, 1.0});
 
-    const auto shoreTransform = math::compose(math::translation(math::Vector3{{4.1, 0.0, 1.8}}),
-                                              math::scaling(math::Vector3{{1.4, 0.025, 1.0}}));
+    const auto shoreTransform =
+        math::compose(math::translation(math::Vector3{4.1, 0.0, 1.8}), math::scaling(math::Vector3{1.4, 0.025, 1.0}));
     addSphere(engine, 2.25, shoreTransform, {0.68, 0.59, 0.36, 1.0});
-    const auto waterTransform = math::compose(math::translation(math::Vector3{{4.1, 0.045, 1.8}}),
-                                              math::scaling(math::Vector3{{1.4, 0.02, 1.0}}));
+    const auto waterTransform =
+        math::compose(math::translation(math::Vector3{4.1, 0.045, 1.8}), math::scaling(math::Vector3{1.4, 0.02, 1.0}));
     addSphere(engine, 2.0, waterTransform, {0.16, 0.48, 0.65, 1.0});
 
     addBox(engine, {3.4, 2.4, 2.8}, {-1.8, 1.2, 0.2}, {0.88, 0.76, 0.55, 1.0});
     constexpr double roofAngle = 0.54;
     addTransformedBox(engine, {2.3, 0.18, 3.25},
-                      math::compose(math::translation(math::Vector3{{-2.8, 2.98, 0.2}}),
+                      math::compose(math::translation(math::Vector3{-2.8, 2.98, 0.2}),
                                     math::rotation(math::RotationAxis::Z, roofAngle)),
                       {0.58, 0.16, 0.10, 1.0});
     addTransformedBox(engine, {2.3, 0.18, 3.25},
-                      math::compose(math::translation(math::Vector3{{-0.8, 2.98, 0.2}}),
+                      math::compose(math::translation(math::Vector3{-0.8, 2.98, 0.2}),
                                     math::rotation(math::RotationAxis::Z, -roofAngle)),
                       {0.58, 0.16, 0.10, 1.0});
     addBox(engine, {0.78, 1.45, 0.12}, {-1.8, 0.73, -1.25}, {0.29, 0.16, 0.09, 1.0});
@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
     addBox(engine, {1.35, 0.32, 1.35}, {-5.1, 3.65, 1.5}, {0.42, 0.20, 0.11, 1.0});
     addBox(engine, {0.42, 0.85, 0.08}, {-5.1, 0.43, 0.70}, {0.25, 0.14, 0.08, 1.0});
 
-    const auto rotorPosition = math::Vector3{{-5.1, 2.95, 0.88}};
+    const auto rotorPosition = math::Vector3{-5.1, 2.95, 0.88};
     const auto rotor = addSphere(engine, 0.24, math::translation(rotorPosition), {0.60, 0.40, 0.19, 1.0});
     (void)engine.scene().setMobility(rotor, core::Mobility::Dynamic);
     for (std::uint32_t blade = 0; blade < 4; ++blade) {
@@ -177,7 +177,7 @@ int main(int argc, char* argv[]) {
         (void)engine.scene().setMobility(bladeId, core::Mobility::Dynamic);
         const double bladeAngle = std::numbers::pi * 0.5 * static_cast<double>(blade) + std::numbers::pi / 4.0;
         const auto bladeTransform = math::compose(math::rotation(math::RotationAxis::Z, bladeAngle),
-                                                  math::translation(math::Vector3{{0.0, 0.93, 0.0}}));
+                                                  math::translation(math::Vector3{0.0, 0.93, 0.0}));
         (void)engine.scene().setLocalTransform(bladeId, bladeTransform);
         (void)engine.scene().setParent(bladeId, rotor);
     }
@@ -194,9 +194,9 @@ int main(int argc, char* argv[]) {
     addBox(engine, {8.2, 0.14, 0.14}, {3.0, 0.38, 5.9}, {0.55, 0.37, 0.20, 1.0});
     addBox(engine, {8.2, 0.14, 0.14}, {3.0, 0.78, 5.9}, {0.55, 0.37, 0.20, 1.0});
 
-    for (const auto& rock : std::array{math::Vector3{{1.8, 0.18, 0.2}}, math::Vector3{{2.1, 0.14, 3.4}},
-                                       math::Vector3{{6.2, 0.16, 3.6}}}) {
-        const auto transform = math::compose(math::translation(rock), math::scaling(math::Vector3{{1.3, 0.65, 0.9}}));
+    for (const auto& rock :
+         std::array{math::Vector3{1.8, 0.18, 0.2}, math::Vector3{2.1, 0.14, 3.4}, math::Vector3{6.2, 0.16, 3.6}}) {
+        const auto transform = math::compose(math::translation(rock), math::scaling(math::Vector3{1.3, 0.65, 0.9}));
         addSphere(engine, 0.32, transform, {0.43, 0.45, 0.40, 1.0});
     }
 
