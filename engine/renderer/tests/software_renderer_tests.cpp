@@ -1,5 +1,6 @@
 #include "huynity/renderer/software_renderer.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <memory>
@@ -133,6 +134,25 @@ void clearColorFillsEmptySnapshot() {
     auto framebuffer = makeFramebuffer(32, 16);
     CHECK(renderer::render(snapshot, framebuffer).has_value());
     CHECK(countColor(framebuffer, BLUE) == 32 * 16);
+}
+
+void clearColorPreservesPaddingWithOddStride() {
+    constexpr std::size_t width = 3;
+    constexpr std::size_t height = 4;
+    constexpr std::size_t stride = width * 4 + 1;
+    constexpr std::byte padding{0xa5};
+    auto framebuffer = image::ImageBuffer::create({.width = width, .height = height, .stride = stride});
+    CHECK(framebuffer.has_value());
+    auto bytes = framebuffer->bytes();
+    std::fill(bytes.begin(), bytes.end(), padding);
+
+    auto snapshot = makeSnapshot(width, height);
+    snapshot.clearColor = {1, 0.5, 0.25, 0.75};
+    CHECK(renderer::render(snapshot, *framebuffer).has_value());
+    CHECK(countColor(*framebuffer, {255, 128, 64, 191}) == width * height);
+    for (std::size_t y = 0; y < height; ++y) {
+        CHECK(framebuffer->row(y).back() == padding);
+    }
 }
 
 void frontTriangleIsVisibleInsideFrustum() {
@@ -325,6 +345,7 @@ void sizeMismatchAndInvalidIndicesAreErrors() {
 int main() {
     try {
         clearColorFillsEmptySnapshot();
+        clearColorPreservesPaddingWithOddStride();
         frontTriangleIsVisibleInsideFrustum();
         reversedWindingIsCulledOnlyWhenEnabled();
         cameraAndItemTransformsShiftProjection();

@@ -1,7 +1,9 @@
 #include "huynity/renderer/software_renderer.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <tuple>
 #include <type_traits>
@@ -276,16 +278,13 @@ void writePixel(image::ImageBuffer& framebuffer, std::size_t x, std::size_t y,
 }
 
 void clear(image::ImageBuffer& framebuffer, const render_contracts::Color& color) noexcept {
-    const std::byte r = toByte(color.red);
-    const std::byte g = toByte(color.green);
-    const std::byte b = toByte(color.blue);
-    const std::byte a = toByte(color.alpha);
-    const std::uint32_t packed = (static_cast<std::uint32_t>(a) << 24) | (static_cast<std::uint32_t>(b) << 16) |
-                                 (static_cast<std::uint32_t>(g) << 8) | static_cast<std::uint32_t>(r);
+    const std::array pixel{toByte(color.red), toByte(color.green), toByte(color.blue), toByte(color.alpha)};
+    const auto rowBytes = framebuffer.width() * pixel.size();
     for (std::size_t y = 0; y < framebuffer.height(); ++y) {
-        auto row = framebuffer.row(y);
-        auto* pixels = reinterpret_cast<std::uint32_t*>(row.data());
-        std::fill_n(pixels, framebuffer.width(), packed);
+        auto* row = framebuffer.row(y).data();
+        for (std::size_t offset = 0; offset < rowBytes; offset += pixel.size()) {
+            std::memcpy(row + offset, pixel.data(), pixel.size());
+        }
     }
 }
 
