@@ -7,6 +7,7 @@
 #include <limits>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 namespace huynity::renderer {
@@ -82,43 +83,54 @@ void addTo(render_contracts::Color& target, const render_contracts::Color& addit
 
 [[nodiscard]] std::expected<const std::vector<math::Vector3>*, RenderError>
 ShadingDataCache::faceNormals(const render_contracts::MeshResource3& resource) {
-    const std::size_t triangleCount = resource.triangles.size() / sizeof(render_contracts::TriangleIndices);
-    for (const auto& entry : m_entries) {
-        if (entry.owner.get() == resource.owner.get() && entry.positions == resource.positions.data() &&
-            entry.triangleCount == triangleCount) {
-            ++m_hits;
-            return &entry.normals;
-        }
-    }
-    auto normals = computeNormals(resource, triangleCount);
-    if (!normals) {
-        return std::unexpected(normals.error());
-    }
-    ++m_misses;
-    m_entries.push_back({resource.owner, resource.positions.data(), triangleCount, std::move(*normals)});
-    return &m_entries.back().normals;
+    return normalsFor(resource, m_entries, m_uncachedFaceNormals, computeNormals);
 }
 
 [[nodiscard]] std::expected<const std::vector<math::Vector3>*, RenderError>
 ShadingDataCache::vertexNormals(const render_contracts::MeshResource3& resource) {
+    return normalsFor(resource, m_vertexEntries, m_uncachedVertexNormals, computeVertexNormals);
+}
+
+std::expected<const std::vector<math::Vector3>*, RenderError>
+ShadingDataCache::normalsFor(const render_contracts::MeshResource3& resource, std::vector<Entry>& entries,
+                             std::vector<math::Vector3>& temporary, CalculateNormals calculate) {
     const std::size_t triangleCount = resource.triangles.size() / sizeof(render_contracts::TriangleIndices);
     const std::size_t vertexCount = resource.positions.size();
-    for (const auto& entry : m_vertexEntries) {
-        if (entry.owner.get() == resource.owner.get() && entry.positions == resource.positions.data() &&
-            entry.triangles == resource.triangles.data() && entry.vertexCount == vertexCount &&
-            entry.triangleCount == triangleCount) {
-            ++m_hits;
-            return &entry.normals;
-        }
+    auto cached = entries.end();
+    if (resource.owner) {
+        cached = std::find_if(entries.begin(), entries.end(), [&](const Entry& entry) {
+            return entry.positions == resource.positions.data() && entry.triangles == resource.triangles.data() &&
+                   entry.vertexCount == vertexCount && entry.triangleCount == triangleCount &&
+                   !entry.owner.owner_before(resource.owner) && !resource.owner.owner_before(entry.owner);
+        });
     }
-    auto normals = computeVertexNormals(resource, triangleCount, vertexCount);
+    if (cached != entries.end() && cached->version == resource.version) {
+        ++m_hits;
+        return &cached->normals;
+    }
+    auto normals = calculate(resource, triangleCount);
     if (!normals) {
         return std::unexpected(normals.error());
     }
     ++m_misses;
-    m_vertexEntries.push_back({resource.owner, resource.positions.data(), resource.triangles.data(), vertexCount,
-                               triangleCount, std::move(*normals)});
-    return &m_vertexEntries.back().normals;
+    if (!resource.owner) {
+        temporary = std::move(*normals);
+        return &temporary;
+    }
+    if (cached != entries.end()) {
+        cached->version = resource.version;
+        cached->normals = std::move(*normals);
+        return &cached->normals;
+    }
+    entries.push_back({resource.owner, resource.positions.data(), resource.triangles.data(), vertexCount, triangleCount,
+                       resource.version, std::move(*normals)});
+    return &entries.back().normals;
+}
+
+void ShadingDataCache::releaseExpired() {
+    const auto isExpired = [](const auto& entry) { return entry.owner.expired(); };
+    std::erase_if(m_entries, isExpired);
+    std::erase_if(m_vertexEntries, isExpired);
 }
 
 [[nodiscard]] std::expected<std::vector<math::Vector3>, RenderError>
@@ -140,9 +152,9 @@ ShadingDataCache::computeNormals(const render_contracts::MeshResource3& resource
 }
 
 [[nodiscard]] std::expected<std::vector<math::Vector3>, RenderError>
-ShadingDataCache::computeVertexNormals(const render_contracts::MeshResource3& resource, std::size_t triangleCount,
-                                       std::size_t vertexCount) {
+ShadingDataCache::computeVertexNormals(const render_contracts::MeshResource3& resource, std::size_t triangleCount) {
     const auto* triangles = reinterpret_cast<const render_contracts::TriangleIndices*>(resource.triangles.data());
+    const auto vertexCount = resource.positions.size();
     std::vector<math::Vector3> normals(vertexCount, math::Vector3{});
     for (std::size_t index = 0; index < triangleCount; ++index) {
         const auto& triangle = triangles[index];
@@ -1010,6 +1022,7 @@ SoftwareRenderer::render(const render_contracts::RenderSnapshot& snapshot, image
     if (framebuffer.width() != snapshot.imageWidth || framebuffer.height() != snapshot.imageHeight) {
         return std::unexpected(RenderError::SizeMismatch);
     }
+    m_shadingCache.releaseExpired();
     detail::clear(framebuffer, snapshot.clearColor);
     const std::size_t pixelCount = snapshot.imageWidth * snapshot.imageHeight;
     if (m_depthBuffer.size() != pixelCount) {

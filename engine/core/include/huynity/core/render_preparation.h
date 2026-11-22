@@ -81,6 +81,7 @@ public:
                                                                render_contracts::Lighting3 lighting = {},
                                                                objectlib::TessellationOptions options = {},
                                                                double aspect = 1.0) {
+        scene.m_tessellationCache.collectDetachedSources();
         auto spatial = scene.refreshSpatialState();
         if (!spatial) {
             return std::unexpected(spatial.error());
@@ -121,6 +122,7 @@ public:
 
     [[nodiscard]] static Result<WorldDrawList2> prepareWorld2D(Scene& scene, render_contracts::Camera2 camera,
                                                                objectlib::TessellationOptions options = {}) {
+        scene.m_tessellationCache.collectDetachedSources();
         auto spatial = scene.refreshSpatialState();
         if (!spatial) {
             return std::unexpected(spatial.error());
@@ -150,6 +152,7 @@ public:
     }
 
     [[nodiscard]] static Result<HudDrawList2> prepareHud2D(Scene& scene, objectlib::TessellationOptions options = {}) {
+        scene.m_tessellationCache.collectDetachedSources();
         HudDrawList2 result;
         const auto [ids, instances] = scene.instancesForRendering();
         for (std::size_t index = 0; index < instances.size(); ++index) {
@@ -174,6 +177,9 @@ public:
 
     [[nodiscard]] static Result<PreparedPasses> preparePasses(Scene& scene, const PassesConfig& config,
                                                               double aspect = 1.0) {
+        if (!config.camera2 && !config.camera3 && !config.hudEnabled) {
+            scene.m_tessellationCache.collectDetachedSources();
+        }
         PreparedPasses result;
         auto appendWorld2 = [&]() -> std::expected<void, objectlib::GeometryError> {
             if (!config.camera2) {

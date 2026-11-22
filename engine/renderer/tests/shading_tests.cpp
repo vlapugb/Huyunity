@@ -1,6 +1,7 @@
 #include "huynity/renderer/software_renderer.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <iostream>
 #include <memory>
@@ -179,6 +180,11 @@ void culledOffBackfaceIsShadedWithFlippedNormal() {
 
 void shadingCacheReusesNormalsForUnchangedGeometry() {
     auto fixture = makeFixture({{color(1, 1, 1), 1}, {}});
+    const auto mesh = std::make_shared<const TestMesh>(std::move(fixture.mesh));
+    auto& resource = fixture.snapshot.resources3.back();
+    resource.owner = mesh;
+    resource.positions = mesh->positions;
+    resource.triangles = std::as_bytes(std::span{mesh->triangles});
     renderer::SoftwareRenderer renderer;
 
     auto first = makeFramebuffer(64, 64);
@@ -205,17 +211,61 @@ void shadingCacheReusesNormalsForUnchangedGeometry() {
     CHECK(renderer.shadingCacheMisses() == 1);
     CHECK(renderer.shadingCacheHits() == 2);
 
-    // новая версия ресурса (другой владелец и данные) вычисляет нормали заново
-    TestMesh changed = frontTriangle(1, 10);
-    fixture.mesh = std::move(changed);
-    render::MeshResource3 resource;
-    resource.owner = fixture.mesh.owner;
-    resource.positions = fixture.mesh.positions;
-    resource.triangles = std::as_bytes(std::span{fixture.mesh.triangles});
-    fixture.snapshot.resources3.back() = resource;
+    // Другой владелец и данные вычисляют нормали заново.
+    const auto changed = std::make_shared<const TestMesh>(frontTriangle(1, 10));
+    resource.owner = changed;
+    resource.positions = changed->positions;
+    resource.triangles = std::as_bytes(std::span{changed->triangles});
     auto updated = makeFramebuffer(64, 64);
     CHECK(renderer.render(fixture.snapshot, updated).has_value());
     CHECK(renderer.shadingCacheMisses() == 2);
+}
+
+void shadingCacheDistinguishesTopologyAndVersion() {
+    auto mesh = std::make_shared<TestMesh>(frontTriangle(1, 10));
+    mesh->triangles.push_back({0, 2, 1});
+    const auto triangles = std::span{mesh->triangles};
+    render::MeshResource3 resource{
+        .owner = mesh,
+        .positions = mesh->positions,
+        .triangles = std::as_bytes(triangles.first(1)),
+    };
+    renderer::ShadingDataCache cache;
+    const auto first = cache.faceNormals(resource);
+    CHECK(first.has_value() && (*first)->front()[2] == -1);
+
+    resource.triangles = std::as_bytes(triangles.last(1));
+    const auto reversed = cache.faceNormals(resource);
+    CHECK(reversed.has_value() && (*reversed)->front()[2] == 1);
+    CHECK(cache.misses() == 2 && cache.hits() == 0);
+
+    mesh->triangles.back() = {0, 1, 2};
+    ++resource.version;
+    const auto updated = cache.faceNormals(resource);
+    CHECK(updated.has_value() && (*updated)->front()[2] == -1);
+    CHECK(cache.misses() == 3);
+    CHECK(cache.faceNormals(resource).has_value());
+    CHECK(cache.hits() == 1);
+}
+
+void shadingCacheRecomputesOwnerlessResources() {
+    auto mesh = frontTriangle(1, 10);
+    const render::MeshResource3 resource{
+        .owner = {},
+        .positions = mesh.positions,
+        .triangles = std::as_bytes(std::span{mesh.triangles}),
+    };
+    renderer::ShadingDataCache cache;
+    const auto firstFace = cache.faceNormals(resource);
+    const auto firstVertex = cache.vertexNormals(resource);
+    CHECK(firstFace.has_value() && (*firstFace)->front()[2] == -1);
+    CHECK(firstVertex.has_value() && (*firstVertex)->front()[2] == -1);
+    mesh.triangles.front() = {0, 2, 1};
+    const auto secondFace = cache.faceNormals(resource);
+    const auto secondVertex = cache.vertexNormals(resource);
+    CHECK(secondFace.has_value() && (*secondFace)->front()[2] == 1);
+    CHECK(secondVertex.has_value() && (*secondVertex)->front()[2] == 1);
+    CHECK(cache.misses() == 4 && cache.hits() == 0);
 }
 
 int main() {
@@ -227,6 +277,8 @@ int main() {
         itemRotationTurnsNormalAwayFromLight();
         culledOffBackfaceIsShadedWithFlippedNormal();
         shadingCacheReusesNormalsForUnchangedGeometry();
+        shadingCacheDistinguishesTopologyAndVersion();
+        shadingCacheRecomputesOwnerlessResources();
         std::cout << "shading: OK\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
