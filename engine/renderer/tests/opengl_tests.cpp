@@ -195,6 +195,7 @@ private:
 
     bool initialize() {
         const auto xOpenDisplay = reinterpret_cast<XOpenDisplayFn>(dlsym(m_x11, "XOpenDisplay"));
+        const auto xFree = reinterpret_cast<int (*)(void*)>(dlsym(m_x11, "XFree"));
         m_xCloseDisplay = reinterpret_cast<XCloseDisplayFn>(dlsym(m_x11, "XCloseDisplay"));
         const auto glxChooseFbConfig = reinterpret_cast<GlxChooseFbConfigFn>(dlsym(m_glx, "glXChooseFBConfig"));
         const auto glxCreatePbuffer = reinterpret_cast<GlxCreatePbufferFn>(dlsym(m_glx, "glXCreatePbuffer"));
@@ -210,7 +211,7 @@ private:
         m_glxDestroyContext = reinterpret_cast<GlxDestroyContextFn>(dlsym(m_glx, "glXDestroyContext"));
         m_glxMakeCurrent = reinterpret_cast<GlxMakeCurrentFn>(dlsym(m_glx, "glXMakeCurrent"));
         m_glxGetProcAddress = reinterpret_cast<GlxGetProcAddressFn>(dlsym(m_glx, "glXGetProcAddressARB"));
-        if (xOpenDisplay == nullptr || m_xCloseDisplay == nullptr || glxChooseFbConfig == nullptr ||
+        if (xOpenDisplay == nullptr || xFree == nullptr || m_xCloseDisplay == nullptr || glxChooseFbConfig == nullptr ||
             glxCreatePbuffer == nullptr || m_glxDestroyPbuffer == nullptr || glxCreateContextAttribs == nullptr ||
             m_glxDestroyContext == nullptr || m_glxMakeCurrent == nullptr || m_glxGetProcAddress == nullptr) {
             return false;
@@ -228,15 +229,20 @@ private:
             glxContextMajorVersion,   3,      glxContextMinorVersion, 3, glxContextProfileMask,
             glxContextCoreProfileBit, glxNone};
         int configCount = 0;
-        void** configs = glxChooseFbConfig(m_display, 0, fbAttribs, &configCount);
-        if (configs == nullptr || configCount == 0) {
+        auto** configs = glxChooseFbConfig(m_display, 0, fbAttribs, &configCount);
+        if (configs == nullptr) {
             return false;
         }
-        m_pbuffer = glxCreatePbuffer(m_display, configs[0], pbufferAttribs);
+        auto* config = configCount > 0 ? configs[0] : nullptr;
+        xFree(configs);
+        if (config == nullptr) {
+            return false;
+        }
+        m_pbuffer = glxCreatePbuffer(m_display, config, pbufferAttribs);
         if (m_pbuffer == 0) {
             return false;
         }
-        m_context = glxCreateContextAttribs(m_display, configs[0], nullptr, 1, contextAttribs);
+        m_context = glxCreateContextAttribs(m_display, config, nullptr, 1, contextAttribs);
         if (m_context == nullptr) {
             return false;
         }
