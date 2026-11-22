@@ -29,6 +29,16 @@ std::optional<CreateError> validateRadius(double radius) {
     return std::nullopt;
 }
 
+std::optional<CreateError> validateHeight(double height) {
+    if (!std::isfinite(height)) {
+        return CreateError{CreateErrorCode::NonFiniteParameter};
+    }
+    if (height <= 0) {
+        return CreateError{CreateErrorCode::InvalidHeight};
+    }
+    return std::nullopt;
+}
+
 template <std::size_t dimension>
 std::optional<CreateError> validateSize(const math::Vector<dimension>& size) {
     if (!size.finite()) {
@@ -117,8 +127,11 @@ CreateResult<Cone3> Cone3::create(Cone3::Params params) {
 }
 
 CreateResult<Cone3> Cone3::create(double radius, double height) {
-    if (!std::isfinite(radius) || !std::isfinite(height)) {
-        return std::unexpected(CreateError{CreateErrorCode::NonFiniteParameter});
+    if (const auto error = validateRadius(radius); error) {
+        return std::unexpected(*error);
+    }
+    if (const auto error = validateHeight(height); error) {
+        return std::unexpected(*error);
     }
     return Cone3(radius, height);
 }
@@ -128,8 +141,11 @@ CreateResult<Cylinder3> Cylinder3::create(Cylinder3::Params params) {
 }
 
 CreateResult<Cylinder3> Cylinder3::create(double radius, double height) {
-    if (!std::isfinite(radius) || !std::isfinite(height)) {
-        return std::unexpected(CreateError{CreateErrorCode::NonFiniteParameter});
+    if (const auto error = validateRadius(radius); error) {
+        return std::unexpected(*error);
+    }
+    if (const auto error = validateHeight(height); error) {
+        return std::unexpected(*error);
     }
     return Cylinder3(radius, height);
 }
@@ -139,8 +155,11 @@ CreateResult<Torus3> Torus3::create(Torus3::Params params) {
 }
 
 CreateResult<Torus3> Torus3::create(double majorRadius, double minorRadius) {
-    if (!std::isfinite(majorRadius) || !std::isfinite(minorRadius)) {
-        return std::unexpected(CreateError{CreateErrorCode::NonFiniteParameter});
+    if (const auto error = validateRadius(majorRadius); error) {
+        return std::unexpected(*error);
+    }
+    if (const auto error = validateRadius(minorRadius); error) {
+        return std::unexpected(*error);
     }
     return Torus3(majorRadius, minorRadius);
 }
