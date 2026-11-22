@@ -1,6 +1,7 @@
 #include "huynity/objectlib/geometry.h"
 
-#include <type_traits>
+#include "huynity/objectlib/objects.h"
+
 #include <utility>
 #include <variant>
 
@@ -12,16 +13,9 @@ CreateResult<Geometry> createGeometry(GeometrySpec spec) {
     }
 
     return std::visit(
-        [](auto params) -> CreateResult<Geometry> {
-            using Params = std::remove_cvref_t<decltype(params)>;
-            using Object = typename Params::Object;
-
-            auto object = Object::create(std::move(params));
-            if (!object) {
-                return std::unexpected(object.error());
-            }
-
-            return Geometry{std::in_place_type<Object>, std::move(*object)};
+        [](SupportedParams auto&& params) -> CreateResult<Geometry> {
+            using Params = decltype(params);
+            return createGeometry(std::forward<Params>(params));
         },
         std::move(spec));
 }
