@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <dlfcn.h>
 #include <iostream>
@@ -163,6 +164,8 @@ public:
     /// @brief Возвращает resolver entry points для huynity::renderer::GlRenderer.
     [[nodiscard]] renderer::GlRenderer::GlProcResolver procResolver() const noexcept { return &resolveProc; }
 
+    [[nodiscard]] std::size_t uniformLookupCount() const noexcept { return m_uniformLookupCount; }
+
 private:
     using XOpenDisplayFn = void* (*)(const char*);
     using XCloseDisplayFn = int (*)(void*);
@@ -174,8 +177,18 @@ private:
     using GlxMakeCurrentFn = int (*)(void*, unsigned long, void*);
     using GlxGetProcAddressFn = void* (*)(const unsigned char*);
 
+    static GLint APIENTRY countUniformLookup(GLuint program, const GLchar* name) {
+        ++g_activeContext->m_uniformLookupCount;
+        return g_activeContext->m_getUniformLocation(program, name);
+    }
+
     static void* resolveProc(const char* name) {
-        return g_activeContext->m_glxGetProcAddress(reinterpret_cast<const unsigned char*>(name));
+        auto* address = g_activeContext->m_glxGetProcAddress(reinterpret_cast<const unsigned char*>(name));
+        if (address != nullptr && std::strcmp(name, "glGetUniformLocation") == 0) {
+            g_activeContext->m_getUniformLocation = reinterpret_cast<PFNGLGETUNIFORMLOCATIONPROC>(address);
+            return reinterpret_cast<void*>(&countUniformLookup);
+        }
+        return address;
     }
 
     GlxContext(void* x11, void* glx) : m_x11(x11), m_glx(glx) {}
@@ -242,6 +255,8 @@ private:
     GlxDestroyContextFn m_glxDestroyContext{};
     GlxMakeCurrentFn m_glxMakeCurrent{};
     GlxGetProcAddressFn m_glxGetProcAddress{};
+    PFNGLGETUNIFORMLOCATIONPROC m_getUniformLocation{};
+    std::size_t m_uniformLookupCount{};
 };
 
 GlxContext* GlxContext::g_activeContext = nullptr;
@@ -367,7 +382,10 @@ int main() {
 
         // Flat triangle под белым ambient даёт цвет материала.
         {
+            const auto lookupsBeforeLink = context->uniformLookupCount();
             renderer::GlRenderer glRenderer(resolver);
+            const auto lookupsAfterLink = context->uniformLookupCount();
+            CHECK(lookupsAfterLink > lookupsBeforeLink);
             Mesh3 mesh = frontTriangle(0.7, 5);
             render::RenderSnapshot snapshot;
             snapshot.imageWidth = 64;
@@ -383,6 +401,7 @@ int main() {
             auto frame = glRenderer.capture(snapshot);
             CHECK(frame.has_value());
             CHECK(nearColor(**frame, 32, 32, color(0.9, 0.1, 0.1)));
+            CHECK(context->uniformLookupCount() == lookupsAfterLink);
         }
 
         // Depth test: ближний треугольник перекрывает дальний независимо от порядка.
@@ -496,6 +515,7 @@ int main() {
         // Процедурное небо: верх кадра — zenith, низ — ground.
         {
             renderer::GlRenderer glRenderer(resolver);
+            const auto lookupsAfterLink = context->uniformLookupCount();
             render::RenderSnapshot snapshot;
             snapshot.imageWidth = 64;
             snapshot.imageHeight = 64;
@@ -515,11 +535,13 @@ int main() {
             CHECK(frame.has_value());
             CHECK(channel(**frame, 32, 2, 2) > channel(**frame, 32, 2, 0) + 60);
             CHECK(channel(**frame, 32, 62, 0) > channel(**frame, 32, 62, 2) + 60);
+            CHECK(context->uniformLookupCount() == lookupsAfterLink);
         }
 
         // HUD: source-over alpha blending и стабильный порядок (layer, order).
         {
             renderer::GlRenderer glRenderer(resolver);
+            const auto lookupsAfterLink = context->uniformLookupCount();
             Mesh2 quad;
             quad.positions = {{4, 4}, {60, 4}, {60, 60}, {4, 60}};
             quad.triangles = {{0, 1, 2}, {0, 2, 3}};
@@ -550,6 +572,7 @@ int main() {
             auto frame = glRenderer.capture(snapshot);
             CHECK(frame.has_value());
             CHECK(nearColor(**frame, 32, 32, color(0.5, 0.5, 0), 12));
+            CHECK(context->uniformLookupCount() == lookupsAfterLink);
         }
 
         // Направленная тень: область за caster по направлению света темнеет
@@ -557,6 +580,7 @@ int main() {
         // на (~1, ~1) мировых единиц по экрану от его силуэта.
         {
             renderer::GlRenderer glRenderer(resolver);
+            const auto lookupsAfterLink = context->uniformLookupCount();
             Mesh3 caster = screenQuad(0.5, 6);
             Mesh3 receiver = screenQuad(4, 10);
             render::RenderSnapshot snapshot;
@@ -605,6 +629,7 @@ int main() {
             auto centered = glRenderer.capture(snapshot);
             CHECK(centered.has_value());
             CHECK(channel(**centered, 48, 16, 0) < channel(**centered, 8, 56, 0) - 25);
+            CHECK(context->uniformLookupCount() == lookupsAfterLink);
         }
 
         // Гуро: сглаженные вершинные нормали освещаются в вершинном шейдере.

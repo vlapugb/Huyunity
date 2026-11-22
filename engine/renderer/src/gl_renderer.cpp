@@ -47,6 +47,10 @@ public:
 
     [[nodiscard]] unsigned int id() const noexcept { return m_id; }
 
+    [[nodiscard]] GLint uniformLocation(const char* name) const noexcept {
+        return m_id == 0 ? -1 : m_functions.getUniformLocation(m_id, name);
+    }
+
 private:
     const GlFunctions& m_functions;
     unsigned int m_id;
@@ -463,6 +467,63 @@ struct MeshKeyHash {
 /// @brief Кадровый интервал, после которого неиспользуемый GPU-ресурс удаляется.
 constexpr std::uint64_t unusedResourceSweepFrames = 120;
 
+struct MaterialUniforms {
+    GLint baseColor{-1};
+    GLint textured{-1};
+    GLint image{-1};
+};
+
+[[nodiscard]] MaterialUniforms materialUniforms(const GlProgram& program) {
+    return {
+        .baseColor = program.uniformLocation("baseColor"),
+        .textured = program.uniformLocation("textured"),
+        .image = program.uniformLocation("image"),
+    };
+}
+
+struct WorldUniforms {
+    MaterialUniforms material;
+    GLint modelView{-1};
+    GLint projection{-1};
+    GLint ambient{-1};
+    GLint sunColor{-1};
+    GLint sunDirection{-1};
+    GLint unlit{-1};
+    GLint gouraud{-1};
+    GLint shadowMap{-1};
+    GLint shadowMatrix{-1};
+    GLint shadowsEnabled{-1};
+    GLint receiveShadow{-1};
+    GLint shadowBias{-1};
+    GLint minVisibility{-1};
+    GLint fogEnabled{-1};
+    GLint fogColor{-1};
+    GLint fogRange{-1};
+};
+
+struct ScreenUniforms {
+    MaterialUniforms material;
+    GLint transform{-1};
+};
+
+struct SkyUniforms {
+    GLint zenith{-1};
+    GLint horizon{-1};
+    GLint ground{-1};
+    GLint rayRight{-1};
+    GLint rayUp{-1};
+    GLint rayForward{-1};
+    GLint projectionScale{-1};
+    GLint sunDirection{-1};
+    GLint sunColor{-1};
+    GLint sunGlow{-1};
+};
+
+struct ShadowUniforms {
+    GLint modelView{-1};
+    GLint projection{-1};
+};
+
 } // namespace
 
 struct GlRenderer::Implementation {
@@ -489,6 +550,46 @@ struct GlRenderer::Implementation {
         screenProgram = GlProgram(gl, makeProgram(screenVertex, screenFragment));
         skyProgram = GlProgram(gl, makeProgram(skyVertex, skyFragment));
         shadowProgram = GlProgram(gl, makeProgram(shadowVertex, shadowFragment));
+        // Дескрипторы действуют до повторной линковки. Программы создаются один раз на экземпляр.
+        worldUniforms = {
+            .material = materialUniforms(worldProgram),
+            .modelView = worldProgram.uniformLocation("modelView"),
+            .projection = worldProgram.uniformLocation("projection"),
+            .ambient = worldProgram.uniformLocation("ambient"),
+            .sunColor = worldProgram.uniformLocation("sunColor"),
+            .sunDirection = worldProgram.uniformLocation("sunDirection"),
+            .unlit = worldProgram.uniformLocation("unlit"),
+            .gouraud = worldProgram.uniformLocation("gouraud"),
+            .shadowMap = worldProgram.uniformLocation("shadowMap"),
+            .shadowMatrix = worldProgram.uniformLocation("shadowMatrix"),
+            .shadowsEnabled = worldProgram.uniformLocation("shadowsEnabled"),
+            .receiveShadow = worldProgram.uniformLocation("receiveShadow"),
+            .shadowBias = worldProgram.uniformLocation("shadowBias"),
+            .minVisibility = worldProgram.uniformLocation("minVisibility"),
+            .fogEnabled = worldProgram.uniformLocation("fogEnabled"),
+            .fogColor = worldProgram.uniformLocation("fogColor"),
+            .fogRange = worldProgram.uniformLocation("fogRange"),
+        };
+        screenUniforms = {
+            .material = materialUniforms(screenProgram),
+            .transform = screenProgram.uniformLocation("transform"),
+        };
+        skyUniforms = {
+            .zenith = skyProgram.uniformLocation("zenith"),
+            .horizon = skyProgram.uniformLocation("horizon"),
+            .ground = skyProgram.uniformLocation("ground"),
+            .rayRight = skyProgram.uniformLocation("rayRight"),
+            .rayUp = skyProgram.uniformLocation("rayUp"),
+            .rayForward = skyProgram.uniformLocation("rayForward"),
+            .projectionScale = skyProgram.uniformLocation("projectionScale"),
+            .sunDirection = skyProgram.uniformLocation("sunDirection"),
+            .sunColor = skyProgram.uniformLocation("sunColor"),
+            .sunGlow = skyProgram.uniformLocation("sunGlow"),
+        };
+        shadowUniforms = {
+            .modelView = shadowProgram.uniformLocation("modelView"),
+            .projection = shadowProgram.uniformLocation("projection"),
+        };
         emptyVao = GlVertexArray(gl, generate(gl.genVertexArrays));
     }
 
@@ -679,12 +780,12 @@ struct GlRenderer::Implementation {
         }
     }
 
-    void uniforms(unsigned int program, const render_contracts::Material& material) {
+    void applyMaterial(const MaterialUniforms& locations, const render_contracts::Material& material) {
         const auto& color = material.color;
-        gl.uniform4f(gl.getUniformLocation(program, "baseColor"), static_cast<float>(color.red),
-                     static_cast<float>(color.green), static_cast<float>(color.blue), static_cast<float>(color.alpha));
-        gl.uniform1i(gl.getUniformLocation(program, "textured"), material.texture ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(program, "image"), 0);
+        gl.uniform4f(locations.baseColor, static_cast<float>(color.red), static_cast<float>(color.green),
+                     static_cast<float>(color.blue), static_cast<float>(color.alpha));
+        gl.uniform1i(locations.textured, material.texture ? 1 : 0);
+        gl.uniform1i(locations.image, 0);
         gl.activeTexture(GL_TEXTURE0);
         const auto textureId = uploadTexture(material);
         gl.bindTexture(GL_TEXTURE_2D, textureId ? *textureId : 0);
@@ -752,8 +853,7 @@ struct GlRenderer::Implementation {
             gl.cullFace(GL_BACK);
             gl.frontFace(GL_CW);
             gl.useProgram(shadowProgram.id());
-            gl.uniformMatrix4fv(gl.getUniformLocation(shadowProgram.id(), "projection"), 1, GL_FALSE,
-                                lightProjection.data());
+            gl.uniformMatrix4fv(shadowUniforms.projection, 1, GL_FALSE, lightProjection.data());
             for (const auto& item : pass.drawItems) {
                 if (!item.castShadow || item.wireframe || item.resource >= snapshot.resources3.size()) {
                     continue;
@@ -768,7 +868,7 @@ struct GlRenderer::Implementation {
                     return std::unexpected(mesh.error());
                 }
                 gl.bindVertexArray((*mesh)->vao.id());
-                gl.uniformMatrix4fv(gl.getUniformLocation(shadowProgram.id(), "modelView"), 1, GL_FALSE,
+                gl.uniformMatrix4fv(shadowUniforms.modelView, 1, GL_FALSE,
                                     modelView(item.localToWorld, worldToLight).data());
                 gl.drawElements(GL_TRIANGLES, static_cast<GLsizei>((*mesh)->indexCount), GL_UNSIGNED_INT, nullptr);
             }
@@ -782,41 +882,37 @@ struct GlRenderer::Implementation {
         gl.depthMask(GL_TRUE);
         gl.disable(GL_BLEND);
         gl.useProgram(worldProgram.id());
-        gl.uniformMatrix4fv(gl.getUniformLocation(worldProgram.id(), "projection"), 1, GL_FALSE,
-                            projectionMatrix.data());
-        gl.uniformMatrix4fv(gl.getUniformLocation(worldProgram.id(), "shadowMatrix"), 1, GL_FALSE, shadowMatrix.data());
-        gl.uniform1i(gl.getUniformLocation(worldProgram.id(), "shadowsEnabled"), pass.lighting.shadows.enabled ? 1 : 0);
-        gl.uniform1i(gl.getUniformLocation(worldProgram.id(), "shadowMap"), 1);
+        gl.uniformMatrix4fv(worldUniforms.projection, 1, GL_FALSE, projectionMatrix.data());
+        gl.uniformMatrix4fv(worldUniforms.shadowMatrix, 1, GL_FALSE, shadowMatrix.data());
+        gl.uniform1i(worldUniforms.shadowsEnabled, pass.lighting.shadows.enabled ? 1 : 0);
+        gl.uniform1i(worldUniforms.shadowMap, 1);
         gl.activeTexture(GL_TEXTURE1);
         gl.bindTexture(GL_TEXTURE_2D, shadowTexture.id());
         gl.activeTexture(GL_TEXTURE0);
-        gl.uniform1f(gl.getUniformLocation(worldProgram.id(), "shadowBias"),
-                     static_cast<float>(pass.lighting.shadows.bias * 0.01));
-        gl.uniform1f(gl.getUniformLocation(worldProgram.id(), "minVisibility"),
-                     static_cast<float>(pass.lighting.shadows.minVisibility));
-        gl.uniform3f(gl.getUniformLocation(worldProgram.id(), "ambient"),
+        gl.uniform1f(worldUniforms.shadowBias, static_cast<float>(pass.lighting.shadows.bias * 0.01));
+        gl.uniform1f(worldUniforms.minVisibility, static_cast<float>(pass.lighting.shadows.minVisibility));
+        gl.uniform3f(worldUniforms.ambient,
                      static_cast<float>(pass.lighting.ambient.color.red * pass.lighting.ambient.intensity),
                      static_cast<float>(pass.lighting.ambient.color.green * pass.lighting.ambient.intensity),
                      static_cast<float>(pass.lighting.ambient.color.blue * pass.lighting.ambient.intensity));
         if (!pass.lighting.directional.empty()) {
             const auto& light = pass.lighting.directional.front();
             const auto direction = math::transformVector(camera, light.direction);
-            gl.uniform3f(gl.getUniformLocation(worldProgram.id(), "sunDirection"), static_cast<float>(direction[0]),
-                         static_cast<float>(direction[1]), static_cast<float>(direction[2]));
-            gl.uniform3f(gl.getUniformLocation(worldProgram.id(), "sunColor"),
-                         static_cast<float>(light.color.red * light.intensity),
+            gl.uniform3f(worldUniforms.sunDirection, static_cast<float>(direction[0]), static_cast<float>(direction[1]),
+                         static_cast<float>(direction[2]));
+            gl.uniform3f(worldUniforms.sunColor, static_cast<float>(light.color.red * light.intensity),
                          static_cast<float>(light.color.green * light.intensity),
                          static_cast<float>(light.color.blue * light.intensity));
         } else {
-            gl.uniform3f(gl.getUniformLocation(worldProgram.id(), "sunColor"), 0, 0, 0);
-            gl.uniform3f(gl.getUniformLocation(worldProgram.id(), "sunDirection"), 0, 0, 1);
+            gl.uniform3f(worldUniforms.sunColor, 0, 0, 0);
+            gl.uniform3f(worldUniforms.sunDirection, 0, 0, 1);
         }
-        gl.uniform1i(gl.getUniformLocation(worldProgram.id(), "fogEnabled"), pass.lighting.fog.enabled ? 1 : 0);
-        gl.uniform4f(gl.getUniformLocation(worldProgram.id(), "fogColor"),
-                     static_cast<float>(pass.lighting.fog.color.red), static_cast<float>(pass.lighting.fog.color.green),
+        gl.uniform1i(worldUniforms.fogEnabled, pass.lighting.fog.enabled ? 1 : 0);
+        gl.uniform4f(worldUniforms.fogColor, static_cast<float>(pass.lighting.fog.color.red),
+                     static_cast<float>(pass.lighting.fog.color.green),
                      static_cast<float>(pass.lighting.fog.color.blue),
                      static_cast<float>(pass.lighting.fog.color.alpha));
-        gl.uniform2f(gl.getUniformLocation(worldProgram.id(), "fogRange"), static_cast<float>(pass.lighting.fog.start),
+        gl.uniform2f(worldUniforms.fogRange, static_cast<float>(pass.lighting.fog.start),
                      static_cast<float>(pass.lighting.fog.end));
         for (const auto& item : pass.drawItems) {
             if (item.resource >= snapshot.resources3.size()) {
@@ -832,12 +928,11 @@ struct GlRenderer::Implementation {
                 return std::unexpected(mesh.error());
             }
             const auto mv = modelView(item.localToWorld, camera);
-            gl.uniformMatrix4fv(gl.getUniformLocation(worldProgram.id(), "modelView"), 1, GL_FALSE, mv.data());
-            uniforms(worldProgram.id(), *snapshot.materials[item.material]);
-            gl.uniform1i(gl.getUniformLocation(worldProgram.id(), "unlit"),
-                         snapshot.materials[item.material]->unlit ? 1 : 0);
-            gl.uniform1i(gl.getUniformLocation(worldProgram.id(), "gouraud"), isGouraud ? 1 : 0);
-            gl.uniform1i(gl.getUniformLocation(worldProgram.id(), "receiveShadow"), item.receiveShadow ? 1 : 0);
+            gl.uniformMatrix4fv(worldUniforms.modelView, 1, GL_FALSE, mv.data());
+            applyMaterial(worldUniforms.material, *snapshot.materials[item.material]);
+            gl.uniform1i(worldUniforms.unlit, snapshot.materials[item.material]->unlit ? 1 : 0);
+            gl.uniform1i(worldUniforms.gouraud, isGouraud ? 1 : 0);
+            gl.uniform1i(worldUniforms.receiveShadow, item.receiveShadow ? 1 : 0);
             if (item.backfaceCulling) {
                 gl.enable(GL_CULL_FACE);
                 gl.cullFace(GL_BACK);
@@ -860,41 +955,39 @@ struct GlRenderer::Implementation {
             gl.useProgram(skyProgram.id());
             gl.depthFunc(GL_LEQUAL);
             gl.depthMask(GL_FALSE);
-            gl.uniform4f(gl.getUniformLocation(skyProgram.id(), "zenith"), static_cast<float>(sky.zenithColor.red),
+            gl.uniform4f(skyUniforms.zenith, static_cast<float>(sky.zenithColor.red),
                          static_cast<float>(sky.zenithColor.green), static_cast<float>(sky.zenithColor.blue), 1);
-            gl.uniform4f(gl.getUniformLocation(skyProgram.id(), "horizon"), static_cast<float>(sky.horizonColor.red),
+            gl.uniform4f(skyUniforms.horizon, static_cast<float>(sky.horizonColor.red),
                          static_cast<float>(sky.horizonColor.green), static_cast<float>(sky.horizonColor.blue), 1);
-            gl.uniform4f(gl.getUniformLocation(skyProgram.id(), "ground"), static_cast<float>(sky.groundColor.red),
+            gl.uniform4f(skyUniforms.ground, static_cast<float>(sky.groundColor.red),
                          static_cast<float>(sky.groundColor.green), static_cast<float>(sky.groundColor.blue), 1);
-            gl.uniform3f(
-                gl.getUniformLocation(skyProgram.id(), "rayRight"), static_cast<float>(skyViewToWorld->linear(0, 0)),
-                static_cast<float>(skyViewToWorld->linear(1, 0)), static_cast<float>(skyViewToWorld->linear(2, 0)));
-            gl.uniform3f(
-                gl.getUniformLocation(skyProgram.id(), "rayUp"), static_cast<float>(skyViewToWorld->linear(0, 1)),
-                static_cast<float>(skyViewToWorld->linear(1, 1)), static_cast<float>(skyViewToWorld->linear(2, 1)));
-            gl.uniform3f(
-                gl.getUniformLocation(skyProgram.id(), "rayForward"), static_cast<float>(skyViewToWorld->linear(0, 2)),
-                static_cast<float>(skyViewToWorld->linear(1, 2)), static_cast<float>(skyViewToWorld->linear(2, 2)));
+            gl.uniform3f(skyUniforms.rayRight, static_cast<float>(skyViewToWorld->linear(0, 0)),
+                         static_cast<float>(skyViewToWorld->linear(1, 0)),
+                         static_cast<float>(skyViewToWorld->linear(2, 0)));
+            gl.uniform3f(skyUniforms.rayUp, static_cast<float>(skyViewToWorld->linear(0, 1)),
+                         static_cast<float>(skyViewToWorld->linear(1, 1)),
+                         static_cast<float>(skyViewToWorld->linear(2, 1)));
+            gl.uniform3f(skyUniforms.rayForward, static_cast<float>(skyViewToWorld->linear(0, 2)),
+                         static_cast<float>(skyViewToWorld->linear(1, 2)),
+                         static_cast<float>(skyViewToWorld->linear(2, 2)));
             double scaleX = 0.0;
             double scaleY = 0.0;
             if (const auto* perspective = std::get_if<render_contracts::PerspectiveCamera3>(&pass.camera)) {
                 scaleY = std::tan(perspective->verticalFieldOfView * 0.5);
                 scaleX = scaleY * static_cast<double>(snapshot.imageWidth) / snapshot.imageHeight;
             }
-            gl.uniform2f(gl.getUniformLocation(skyProgram.id(), "projectionScale"), static_cast<float>(scaleX),
-                         static_cast<float>(scaleY));
+            gl.uniform2f(skyUniforms.projectionScale, static_cast<float>(scaleX), static_cast<float>(scaleY));
             if (!pass.lighting.directional.empty()) {
                 const auto& light = pass.lighting.directional.front();
-                gl.uniform3f(gl.getUniformLocation(skyProgram.id(), "sunDirection"),
-                             static_cast<float>(light.direction[0]), static_cast<float>(light.direction[1]),
-                             static_cast<float>(light.direction[2]));
-                gl.uniform4f(gl.getUniformLocation(skyProgram.id(), "sunColor"), static_cast<float>(sky.sunColor.red),
+                gl.uniform3f(skyUniforms.sunDirection, static_cast<float>(light.direction[0]),
+                             static_cast<float>(light.direction[1]), static_cast<float>(light.direction[2]));
+                gl.uniform4f(skyUniforms.sunColor, static_cast<float>(sky.sunColor.red),
                              static_cast<float>(sky.sunColor.green), static_cast<float>(sky.sunColor.blue), 1.0F);
             } else {
-                gl.uniform4f(gl.getUniformLocation(skyProgram.id(), "sunColor"), 0, 0, 0, 1);
-                gl.uniform3f(gl.getUniformLocation(skyProgram.id(), "sunDirection"), 0, 0, 1);
+                gl.uniform4f(skyUniforms.sunColor, 0, 0, 0, 1);
+                gl.uniform3f(skyUniforms.sunDirection, 0, 0, 1);
             }
-            gl.uniform1f(gl.getUniformLocation(skyProgram.id(), "sunGlow"), static_cast<float>(sky.sunGlow));
+            gl.uniform1f(skyUniforms.sunGlow, static_cast<float>(sky.sunGlow));
             gl.bindVertexArray(emptyVao.id());
             gl.drawArrays(GL_TRIANGLES, 0, 3);
             gl.depthMask(GL_TRUE);
@@ -934,7 +1027,7 @@ struct GlRenderer::Implementation {
             projection2[12] = -1.0F;
             projection2[13] = 1.0F;
         }
-        gl.uniformMatrix4fv(gl.getUniformLocation(screenProgram.id(), "transform"), 1, GL_FALSE, projection2.data());
+        gl.uniformMatrix4fv(screenUniforms.transform, 1, GL_FALSE, projection2.data());
         std::vector<const render_contracts::DrawItem2*> sorted;
         sorted.reserve(pass.drawItems.size());
         for (const auto& item : pass.drawItems) {
@@ -1001,7 +1094,7 @@ struct GlRenderer::Implementation {
             gl.enableVertexAttribArray(2);
             gl.vertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                                    reinterpret_cast<void*>(offsetof(Vertex, normal)));
-            uniforms(screenProgram.id(), *snapshot.materials[item->material]);
+            applyMaterial(screenUniforms.material, *snapshot.materials[item->material]);
             gl.polygonMode(GL_FRONT_AND_BACK, item->wireframe ? GL_LINE : GL_FILL);
             gl.drawElements(GL_TRIANGLES, static_cast<GLsizei>(resource.triangles.size() / sizeof(std::uint32_t)),
                             GL_UNSIGNED_INT, nullptr);
@@ -1014,9 +1107,13 @@ struct GlRenderer::Implementation {
     /// @brief Таблица функций объявлена первой, чтобы пережить RAII-члены при разрушении.
     GlFunctions gl{};
     GlProgram worldProgram;
+    WorldUniforms worldUniforms;
     GlProgram screenProgram;
+    ScreenUniforms screenUniforms;
     GlProgram skyProgram;
+    SkyUniforms skyUniforms;
     GlProgram shadowProgram;
+    ShadowUniforms shadowUniforms;
     GlVertexArray emptyVao;
     GlTexture shadowTexture;
     GlFramebuffer shadowFramebuffer;
