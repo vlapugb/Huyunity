@@ -517,6 +517,20 @@ public:
     [[nodiscard]] std::size_t size() const noexcept { return m_instances.size(); }
 
 private:
+    friend class RenderPreparation;
+
+    struct RenderInstances {
+        std::span<const ObjectId> ids;
+        std::span<const SceneInstance> instances;
+    };
+
+    /// @brief Представления идентификаторов и экземпляров в одном плотном порядке.
+    /// @return Данные действительны до изменения состава хранилища. Тесселяция меняет кеш и флаг
+    /// dirty.tessellation, сохраняя адреса и порядок экземпляров.
+    [[nodiscard]] RenderInstances instancesForRendering() const noexcept {
+        return {m_instances.ids(), m_instances.values()};
+    }
+
     [[nodiscard]] CommandResult applyOne(const CommandRequest& request) {
         CommandResult result{request.requestId, {}, {}};
         std::visit(

@@ -58,6 +58,33 @@ void hudUsesScreenSpaceLayersOrderAndAlpha() {
     CHECK(hud->drawItems[0].localToWorld.translation(1) == 40);
 }
 
+void hudPreservesDenseOrderAfterRemoval() {
+    core::Scene scene;
+    const auto removed = createRectangle(scene, core::RenderSpace::Hud, 1, 0);
+    const auto middle = createRectangle(scene, core::RenderSpace::Hud, 1, 0);
+    const auto last = createRectangle(scene, core::RenderSpace::Hud, 1, 0);
+    CHECK(scene.setLocalTransform(middle, math::translation(math::Vector2{{10, 0}})).has_value());
+    CHECK(scene.setLocalTransform(last, math::translation(math::Vector2{{20, 0}})).has_value());
+    const auto replacement = objects::createObject<objects::ObjectType::Rectangle2>({.size = {{4, 4}}});
+    CHECK(replacement.has_value());
+    CHECK(scene.setGeometry(last, objects::Geometry{*replacement}).has_value());
+    CHECK(scene.find(last)->dirty.tessellation);
+
+    const auto view = scene.view();
+    CHECK(scene.removeSubtree(removed).has_value());
+    CHECK(view.instances.size() == 3 && view.instances.front().id == removed);
+    CHECK(view.instances.front().geometry != nullptr);
+
+    const auto hud = core::RenderPreparation::prepareHud2D(scene);
+    CHECK(hud.has_value() && hud->drawItems.size() == 2);
+    CHECK(hud->drawItems[0].localToWorld.translation(0) == 20);
+    CHECK(hud->drawItems[1].localToWorld.translation(0) == 10);
+    CHECK(!scene.find(last)->dirty.tessellation);
+    CHECK(scene.localBoundsCalculations() == 0);
+    const auto lastGeometry = scene.tessellation(last);
+    CHECK(lastGeometry.has_value() && hud->drawItems[0].geometry == *lastGeometry);
+}
+
 void twoDimensionalOnlyActivatesWorldAndHud() {
     core::Scene scene;
     const auto world = createRectangle(scene, core::RenderSpace::World, 3, 7);
@@ -130,6 +157,7 @@ void hudCanBeDisabledIndependently() {
 int main() {
     try {
         hudUsesScreenSpaceLayersOrderAndAlpha();
+        hudPreservesDenseOrderAfterRemoval();
         twoDimensionalOnlyActivatesWorldAndHud();
         mixedSceneOrdersAllActivePasses();
         threeDimensionalWorldAndHudWithoutWorld2d();

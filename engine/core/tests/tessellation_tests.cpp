@@ -1,6 +1,8 @@
 #include "huynity/core/scene.h"
 
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -72,6 +74,49 @@ void geometryChangeInvalidatesOnlyNewVersion() {
     CHECK(!scene.find(id)->dirty.tessellation);
 }
 
+void cacheRetainsGeometryAndDistinguishesVersions() {
+    const auto sphere = objects::createObject<objects::ObjectType::Sphere3>({.radius = 2});
+    CHECK(sphere.has_value());
+    const auto copy = std::make_shared<const objects::Geometry>(*sphere);
+    auto geometry = std::make_shared<const objects::Geometry>(*sphere);
+    const std::weak_ptr<const objects::Geometry> owner{geometry};
+    core::TessellationCache cache;
+    const auto initial = cache.get(geometry, 1, {});
+    const auto nextVersion = cache.get(geometry, 2, {});
+    const auto distinctGeometry = cache.get(copy, 1, {});
+    CHECK(initial.has_value() && nextVersion.has_value() && distinctGeometry.has_value());
+    CHECK(*nextVersion != *initial && *distinctGeometry != *initial);
+    CHECK(cache.size() == 3);
+
+    geometry.reset();
+    CHECK(!owner.expired());
+    CHECK(cache.get(owner.lock(), 1, {}) == initial);
+    CHECK(cache.calculations() == 3);
+    CHECK(cache.cacheHits() == 1);
+}
+
+void invalidDeviationDoesNotEnterCache() {
+    const auto sphere = objects::createObject<objects::ObjectType::Sphere3>({.radius = 2});
+    CHECK(sphere.has_value());
+    const auto geometry = std::make_shared<const objects::Geometry>(*sphere);
+    const auto unsupported = std::make_shared<const objects::Geometry>(math::Point3{});
+    const objects::TessellationOptions invalidOptions{.maxDeviation = std::numeric_limits<double>::quiet_NaN()};
+    core::TessellationCache cache;
+    const auto valid = cache.get(geometry, 1, {});
+    CHECK(valid.has_value());
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        const auto invalid = cache.get(geometry, 1, invalidOptions);
+        CHECK(!invalid.has_value() && invalid.error().code == objects::GeometryErrorCode::InvalidOptions);
+    }
+    const auto unsupportedResult = cache.get(unsupported, 1, invalidOptions);
+    CHECK(!unsupportedResult.has_value() &&
+          unsupportedResult.error().code == objects::GeometryErrorCode::UnsupportedOperation);
+    CHECK(cache.size() == 1);
+    CHECK(cache.calculations() == 4);
+    CHECK(cache.cacheHits() == 0);
+    CHECK(cache.get(geometry, 1, {}) == valid);
+}
+
 void geometryErrorLeavesSceneAndCacheConsistent() {
     core::Scene scene;
     const auto id = createSphere(scene);
@@ -100,6 +145,8 @@ int main() {
         reuseAcrossMovementAndSharedInstances();
         qualityKeyIncludesEveryOption();
         geometryChangeInvalidatesOnlyNewVersion();
+        cacheRetainsGeometryAndDistinguishesVersions();
+        invalidDeviationDoesNotEnterCache();
         geometryErrorLeavesSceneAndCacheConsistent();
         std::cout << "tessellation_cache: OK\n";
     } catch (const std::exception& error) {

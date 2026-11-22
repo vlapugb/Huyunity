@@ -87,8 +87,9 @@ public:
         }
         WorldDrawList3 result{std::move(camera), std::move(lighting), {}};
         const auto worldToView = std::visit([](const auto& value) { return value.worldToView; }, result.camera);
-        const auto view = scene.view();
-        for (const auto& instance : view.instances) {
+        const auto [ids, instances] = scene.instancesForRendering();
+        for (std::size_t index = 0; index < instances.size(); ++index) {
+            const auto& instance = instances[index];
             const auto* transform = std::get_if<math::Transform3>(&instance.worldTransform);
             if (instance.renderSpace != RenderSpace::World || !instance.isVisible || transform == nullptr ||
                 !instance.worldBounds.has_value()) {
@@ -107,7 +108,7 @@ public:
             if (!inCamera && !inShadowCasterVolume) {
                 continue;
             }
-            auto geometry = scene.tessellation(instance.id, options);
+            auto geometry = scene.tessellation(ids[index], options);
             if (!geometry) {
                 return std::unexpected(geometry.error());
             }
@@ -125,8 +126,9 @@ public:
             return std::unexpected(spatial.error());
         }
         WorldDrawList2 result{camera, {}};
-        const auto view = scene.view();
-        for (const auto& instance : view.instances) {
+        const auto [ids, instances] = scene.instancesForRendering();
+        for (std::size_t index = 0; index < instances.size(); ++index) {
+            const auto& instance = instances[index];
             const auto* transform = std::get_if<math::Transform2>(&instance.worldTransform);
             if (instance.renderSpace != RenderSpace::World || !instance.isVisible || transform == nullptr ||
                 !instance.worldBounds.has_value()) {
@@ -136,7 +138,7 @@ public:
             if (!isVisible(bounds, camera)) {
                 continue;
             }
-            auto geometry = scene.tessellation(instance.id, options);
+            auto geometry = scene.tessellation(ids[index], options);
             if (!geometry) {
                 return std::unexpected(geometry.error());
             }
@@ -149,13 +151,14 @@ public:
 
     [[nodiscard]] static Result<HudDrawList2> prepareHud2D(Scene& scene, objectlib::TessellationOptions options = {}) {
         HudDrawList2 result;
-        const auto view = scene.view();
-        for (const auto& instance : view.instances) {
+        const auto [ids, instances] = scene.instancesForRendering();
+        for (std::size_t index = 0; index < instances.size(); ++index) {
+            const auto& instance = instances[index];
             const auto* transform = std::get_if<math::Transform2>(&instance.worldTransform);
             if (instance.renderSpace != RenderSpace::Hud || !instance.isVisible || transform == nullptr) {
                 continue;
             }
-            auto geometry = scene.tessellation(instance.id, options);
+            auto geometry = scene.tessellation(ids[index], options);
             if (!geometry) {
                 return std::unexpected(geometry.error());
             }
