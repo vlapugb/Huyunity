@@ -9,8 +9,8 @@ class Cone3 {
 public:
     struct Params {
         using Object = Cone3;
-        double radius;
-        double height;
+        double radius{};
+        double height{};
     };
 
     static constexpr auto Dimension = 3;

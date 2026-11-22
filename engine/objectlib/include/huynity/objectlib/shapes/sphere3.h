@@ -9,7 +9,7 @@ class Sphere3 {
 public:
     struct Params {
         using Object = Sphere3;
-        double radius;
+        double radius{};
     };
 
     static constexpr auto Dimension = 3;

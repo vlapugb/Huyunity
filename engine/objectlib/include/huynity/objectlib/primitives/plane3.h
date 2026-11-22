@@ -11,7 +11,7 @@ public:
     struct Params {
         using Object = Plane3;
         math::Vector3 normal;
-        double offset;
+        double offset{};
     };
 
     static constexpr auto Dimension = 3;

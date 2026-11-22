@@ -9,7 +9,7 @@ class Circle2 {
 public:
     struct Params {
         using Object = Circle2;
-        double radius;
+        double radius{};
     };
 
     static constexpr auto Dimension = 2;

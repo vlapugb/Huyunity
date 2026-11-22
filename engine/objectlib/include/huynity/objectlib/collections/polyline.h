@@ -17,7 +17,7 @@ public:
     struct Params {
         using Object = Polyline;
         std::vector<math::Point<dimension>> vertices;
-        bool closed;
+        bool closed{};
     };
 
     static constexpr auto Dimension = dimension;

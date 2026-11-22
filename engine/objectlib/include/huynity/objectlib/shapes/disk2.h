@@ -9,7 +9,7 @@ class Disk2 {
 public:
     struct Params {
         using Object = Disk2;
-        double radius;
+        double radius{};
     };
 
     static constexpr auto Dimension = 2;

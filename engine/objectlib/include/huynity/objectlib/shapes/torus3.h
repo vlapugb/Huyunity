@@ -9,8 +9,8 @@ class Torus3 {
 public:
     struct Params {
         using Object = Torus3;
-        double majorRadius;
-        double minorRadius;
+        double majorRadius{};
+        double minorRadius{};
     };
 
     static constexpr auto Dimension = 3;
