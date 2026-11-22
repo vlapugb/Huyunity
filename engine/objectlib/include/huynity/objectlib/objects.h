@@ -34,6 +34,11 @@ concept SupportedObject = requires(typename Object::Params params) {
     { Object::Type } -> std::convertible_to<ObjectType>;
 };
 
+template <typename Object, typename... Args>
+concept SupportedArgs = requires(Args&&... args) {
+    { Object::create(std::forward<Args>(args)...) } -> std::same_as<CreateResult<Object>>;
+};
+
 template <typename Params>
 concept SupportedParams = requires {
     typename Params::Object;
@@ -47,6 +52,7 @@ template <typename Params>
 }
 
 template <typename Object, typename... Args>
+    requires SupportedObject<Object> && SupportedArgs<Object, Args...>
 [[nodiscard]] CreateResult<Object> createObject(Args&&... args) {
     return Object::create(std::forward<Args>(args)...);
 }
