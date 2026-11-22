@@ -39,24 +39,49 @@ bool is2DGeometry(const huynity::objectlib::Geometry& geometry) {
 
 namespace huynity {
 
+Engine::WindowAndRenderer::WindowAndRenderer() = default;
+Engine::WindowAndRenderer::~WindowAndRenderer() {
+    resetRenderer();
+}
+Engine::WindowAndRenderer::WindowAndRenderer(WindowAndRenderer&&) noexcept = default;
+
+Engine::WindowAndRenderer& Engine::WindowAndRenderer::operator=(WindowAndRenderer&& other) noexcept {
+    if (this != &other) {
+        resetRenderer();
+        window = std::move(other.window);
+        glRenderer = std::move(other.glRenderer);
+    }
+    return *this;
+}
+
+void Engine::WindowAndRenderer::resetRenderer() noexcept {
+    if (!glRenderer) {
+        return;
+    }
+    if (!window || !window->makeCurrent()) {
+        glRenderer->abandonContext();
+    }
+    glRenderer.reset();
+}
+
 Engine::Engine(const EngineConfig& config) : m_config{config}, m_fixedUpdate{m_config.fixedTimeStep, 5} {
     adapters::window::WindowConfig winConfig{
         .size = m_config.windowSize,
         .title = m_config.windowTitle,
         .forceHeadless = m_config.forceHeadless,
     };
-    m_window = adapters::window::createWindow(winConfig);
-    if (!m_window) {
+    m_surface.window = adapters::window::createWindow(winConfig);
+    if (!m_surface.window) {
         throw std::runtime_error("Failed to create window adapter");
     }
-    if (!m_config.forceHeadless && m_window->hasGpuSurface() && m_window->makeCurrent()) {
+    if (!m_config.forceHeadless && m_surface.window->hasGpuSurface() && m_surface.window->makeCurrent()) {
         try {
-            m_glRenderer = std::make_unique<renderer::GlRenderer>(m_window->glProcResolver());
+            m_surface.glRenderer = std::make_unique<renderer::GlRenderer>(m_surface.window->glProcResolver());
         } catch (const std::exception& error) {
             std::cerr << "OpenGL renderer initialization failed, using software renderer: " << error.what() << '\n';
         }
     }
-    const auto sz = m_window->size();
+    const auto sz = m_surface.window->size();
     m_pipeline.resize(runtime::SurfaceSize{.width = sz.width, .height = sz.height});
 }
 
@@ -132,7 +157,7 @@ void Engine::onEvent(EventCallback callback) {
 
 void Engine::step(double dt) {
     std::vector<adapters::window::InputEvent> events;
-    m_window->pollEvents(events);
+    m_surface.window->pollEvents(events);
 
     for (const auto& event : events) {
         if (m_onEvent) {
@@ -174,8 +199,8 @@ void Engine::step(double dt) {
         m_onFrame(alpha);
     }
 
-    if (m_window->isOpen()) {
-        const auto winSize = m_window->size();
+    if (m_surface.window->isOpen()) {
+        const auto winSize = m_surface.window->size();
         if (winSize.width > 0 && winSize.height > 0) {
             core::PassesConfig passesConfig{
                 .camera3 = m_camera3,
@@ -189,18 +214,18 @@ void Engine::step(double dt) {
                 core::RenderPreparation::prepareSnapshot(m_scene, passesConfig, winSize.width, winSize.height);
             if (snapshotResult.has_value()) {
                 snapshotResult->clearColor = m_clearColor;
-                if (m_glRenderer && m_window->makeCurrent()) {
-                    if (!m_glRenderer->render(*snapshotResult)) {
+                if (m_surface.glRenderer && m_surface.window->makeCurrent()) {
+                    if (!m_surface.glRenderer->render(*snapshotResult)) {
                         std::cerr << "OpenGL frame rendering failed\n";
                     }
-                    m_window->swapBuffers();
+                    m_surface.window->swapBuffers();
                     m_inputState.resetDeltas();
                     return;
                 }
                 auto framebuffer = m_pipeline.acquireFramebuffer();
                 if (framebuffer) {
                     if (m_renderer.render(*snapshotResult, *framebuffer).has_value()) {
-                        framebuffer = m_window->present(std::move(framebuffer));
+                        framebuffer = m_surface.window->present(std::move(framebuffer));
                     }
                     m_pipeline.releaseFromPresentation(std::move(framebuffer));
                 }
@@ -212,8 +237,8 @@ void Engine::step(double dt) {
 }
 
 std::unique_ptr<image::ImageBuffer> Engine::captureFrame() {
-    if (m_glRenderer && m_window->makeCurrent()) {
-        const auto size = m_window->size();
+    if (m_surface.glRenderer && m_surface.window->makeCurrent()) {
+        const auto size = m_surface.window->size();
         core::PassesConfig config{
             .camera3 = m_camera3,
             .camera2 = m_camera2,
@@ -227,10 +252,10 @@ std::unique_ptr<image::ImageBuffer> Engine::captureFrame() {
             return nullptr;
         }
         snapshot->clearColor = m_clearColor;
-        auto captured = m_glRenderer->capture(*snapshot);
+        auto captured = m_surface.glRenderer->capture(*snapshot);
         return captured ? std::move(*captured) : nullptr;
     }
-    const auto* headless = dynamic_cast<const adapters::window::HeadlessWindow*>(m_window.get());
+    const auto* headless = dynamic_cast<const adapters::window::HeadlessWindow*>(m_surface.window.get());
     if (headless == nullptr || headless->lastPresentedFrame() == nullptr) {
         return nullptr;
     }
@@ -248,7 +273,7 @@ void Engine::run() {
     auto previousTime = std::chrono::steady_clock::now();
     constexpr double maxDt = 0.1;
     const std::chrono::duration<double> targetFrameTime{1.0 / 60.0};
-    while (m_isRunning && m_window->isOpen()) {
+    while (m_isRunning && m_surface.window->isOpen()) {
         const auto frameStart = std::chrono::steady_clock::now();
         const std::chrono::duration<double> elapsed = frameStart - previousTime;
         previousTime = frameStart;
@@ -266,8 +291,9 @@ void Engine::run() {
 
 void Engine::stop() noexcept {
     m_isRunning = false;
-    if (m_window) {
-        m_window->close();
+    m_surface.resetRenderer();
+    if (m_surface.window) {
+        m_surface.window->close();
     }
 }
 
@@ -309,7 +335,7 @@ void Engine::show(core::ObjectId id) {
             id, std::make_shared<const render_contracts::Material>(render_contracts::Color{0.2, 0.6, 0.9, 1.0}));
     }
 
-    const auto winSize = m_window ? m_window->size() : m_config.windowSize;
+    const auto winSize = m_surface.window ? m_surface.window->size() : m_config.windowSize;
     const double winW = static_cast<double>(winSize.width);
     const double winH = static_cast<double>(winSize.height);
     const double aspect = (winW > 0.0 && winH > 0.0) ? (winW / winH) : (4.0 / 3.0);

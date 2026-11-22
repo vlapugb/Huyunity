@@ -128,14 +128,17 @@ bool NativeWindow::isOpen() const noexcept {
 void NativeWindow::close() noexcept {
     m_isOpen = false;
     if (m_context != nullptr) {
-        if (m_blitTexture != 0) {
-            glDeleteTextures(1, &m_blitTexture);
-        }
-        if (m_blitVao != 0) {
-            glDeleteVertexArrays(1, &m_blitVao);
-        }
-        if (m_blitProgram != 0) {
-            glDeleteProgram(m_blitProgram);
+        const auto hasBlitResources = m_blitTexture != 0 || m_blitVao != 0 || m_blitProgram != 0;
+        if (hasBlitResources && SDL_GL_MakeCurrent(m_window, m_context)) {
+            if (m_blitTexture != 0) {
+                glDeleteTextures(1, &m_blitTexture);
+            }
+            if (m_blitVao != 0) {
+                glDeleteVertexArrays(1, &m_blitVao);
+            }
+            if (m_blitProgram != 0) {
+                glDeleteProgram(m_blitProgram);
+            }
         }
         SDL_GL_DestroyContext(m_context);
         m_context = nullptr;

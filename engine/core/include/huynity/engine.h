@@ -220,12 +220,12 @@ public:
     /**
      * @brief Возвращает системный оконный адаптер.
      */
-    [[nodiscard]] adapters::window::WindowAdapter& window() noexcept { return *m_window; }
+    [[nodiscard]] adapters::window::WindowAdapter& window() noexcept { return *m_surface.window; }
 
     /**
      * @brief Возвращает системный оконный адаптер (константная версия).
      */
-    [[nodiscard]] const adapters::window::WindowAdapter& window() const noexcept { return *m_window; }
+    [[nodiscard]] const adapters::window::WindowAdapter& window() const noexcept { return *m_surface.window; }
 
     // --- Обратные вызовы игры ---
 
@@ -320,13 +320,25 @@ public:
     [[nodiscard]] const runtime::FramePipeline& pipeline() const noexcept { return m_pipeline; }
 
 private:
+    struct WindowAndRenderer {
+        WindowAndRenderer();
+        ~WindowAndRenderer();
+        WindowAndRenderer(WindowAndRenderer&&) noexcept;
+        WindowAndRenderer& operator=(WindowAndRenderer&& other) noexcept;
+
+        /// @brief Освобождает GPU-ресурсы в контексте их окна.
+        void resetRenderer() noexcept;
+
+        std::unique_ptr<adapters::window::WindowAdapter> window;
+        std::unique_ptr<renderer::GlRenderer> glRenderer;
+    };
+
     EngineConfig m_config;
     core::Scene m_scene;
-    std::unique_ptr<adapters::window::WindowAdapter> m_window;
+    WindowAndRenderer m_surface;
     runtime::FramePipeline m_pipeline;
     runtime::FixedStepUpdate m_fixedUpdate;
     renderer::SoftwareRenderer m_renderer;
-    std::unique_ptr<renderer::GlRenderer> m_glRenderer;
     adapters::window::InputState m_inputState;
     std::optional<render_contracts::Camera3> m_camera3;
     std::optional<render_contracts::Camera2> m_camera2;

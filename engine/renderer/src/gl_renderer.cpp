@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <numbers>
 #include <stdexcept>
 #include <string>
@@ -443,9 +444,11 @@ struct GlMesh {
     std::uint64_t lastUsedFrame{};
 };
 
-/// @brief Кешированная текстура на GPU и версия загруженных пикселей.
+/// @brief GPU-текстура и идентичность источника загруженных пикселей.
 struct GlTextureEntry {
     GlTexture texture;
+    std::weak_ptr<const image::ImageBuffer> source;
+    std::uintptr_t sourceAddress{};
     std::uint64_t version{};
     std::uint64_t lastUsedFrame{};
 };
@@ -641,25 +644,22 @@ struct GlRenderer::Implementation {
         return id;
     }
 
-    /// @brief Возвращает ключ текстуры: стабильный textureId из снимка или адрес как fallback.
-    [[nodiscard]] static std::uint64_t textureKey(const render_contracts::Material& material) noexcept {
-        if (material.textureId != 0) {
-            return material.textureId;
-        }
-        return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(material.texture.get()));
-    }
-
     [[nodiscard]] std::expected<unsigned int, RenderError> uploadTexture(const render_contracts::Material& material) {
         if (!material.texture) {
             return 0;
         }
-        const auto key = textureKey(material);
+        const auto sourceAddress = reinterpret_cast<std::uintptr_t>(material.texture.get());
+        const auto key = material.textureId != 0 ? material.textureId : static_cast<std::uint64_t>(sourceAddress);
         const auto found = textures.find(key);
-        if (found != textures.end() && found->second.version == material.textureVersion) {
-            found->second.lastUsedFrame = frameCounter;
-            return found->second.texture.id();
-        }
         if (found != textures.end()) {
+            auto& entry = found->second;
+            // Адрес ImageBuffer может повториться после уничтожения источника.
+            const bool sameOwner =
+                !entry.source.owner_before(material.texture) && !material.texture.owner_before(entry.source);
+            if (entry.version == material.textureVersion && entry.sourceAddress == sourceAddress && sameOwner) {
+                entry.lastUsedFrame = frameCounter;
+                return entry.texture.id();
+            }
             textures.erase(found);
         }
         const auto id = generate(gl.genTextures);
@@ -679,8 +679,13 @@ struct GlRenderer::Implementation {
         gl.texImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<int>(material.texture->width()),
                       static_cast<int>(material.texture->height()), 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
         gl.pixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        auto [stored, inserted] =
-            textures.emplace(key, GlTextureEntry{GlTexture(gl, id), material.textureVersion, frameCounter});
+        auto [stored, inserted] = textures.emplace(key, GlTextureEntry{
+                                                            .texture = GlTexture(gl, id),
+                                                            .source = material.texture,
+                                                            .sourceAddress = sourceAddress,
+                                                            .version = material.textureVersion,
+                                                            .lastUsedFrame = frameCounter,
+                                                        });
         (void)inserted;
         return stored->second.texture.id();
     }
@@ -1132,6 +1137,19 @@ GlRenderer::GlRenderer(GlProcResolver resolver) : m_implementation{std::make_uni
 GlRenderer::~GlRenderer() = default;
 GlRenderer::GlRenderer(GlRenderer&&) noexcept = default;
 GlRenderer& GlRenderer::operator=(GlRenderer&&) noexcept = default;
+
+void GlRenderer::abandonContext() noexcept {
+    auto& gl = m_implementation->gl;
+    // RAII-объекты уничтожаются обычным порядком, без обращений к чужому контексту.
+    const auto ignoreObjects = [](GLsizei, const GLuint*) {};
+    gl.deleteBuffers = ignoreObjects;
+    gl.deleteFramebuffers = ignoreObjects;
+    gl.deleteRenderbuffers = ignoreObjects;
+    gl.deleteTextures = ignoreObjects;
+    gl.deleteVertexArrays = ignoreObjects;
+    gl.deleteProgram = [](GLuint) {};
+    m_implementation.reset();
+}
 
 std::expected<void, RenderError> GlRenderer::render(const render_contracts::RenderSnapshot& snapshot) {
     ++m_implementation->frameCounter;
