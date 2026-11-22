@@ -1,4 +1,5 @@
 #include "huynity/core/render_preparation.h"
+#include "huynity/objectlib/shapes/rectangle2.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -30,8 +31,8 @@ core::PassesConfig config3() {
 
 void infiniteGeometryWithoutRepresentationIsRejectedAtomically() {
     core::Scene scene;
-    auto valid = scene.createObject<objects::ObjectType::Rectangle2>({.size = {{2, 2}}});
-    auto line = scene.createObject<objects::ObjectType::Line2>({.origin = {{0, 0}}, .direction = {{1, 0}}});
+    auto valid = scene.createObject(objects::Rectangle2::Params{.size = {2, 2}});
+    auto line = scene.createObject(objects::Line2::Params{.origin = {0, 0}, .direction = {1, 0}});
     CHECK(valid.has_value() && line.has_value());
     const auto size = scene.size();
     const auto geometry = scene.find(*line)->geometry;
@@ -45,12 +46,12 @@ void infiniteGeometryWithoutRepresentationIsRejectedAtomically() {
 
 void lineAndRayUseExplicitFiniteRepresentations() {
     core::Scene scene;
-    auto line = scene.createObject<objects::ObjectType::Line2>({.origin = {{0, 0}}, .direction = {{1, 0}}});
-    auto ray = scene.createObject<objects::ObjectType::Ray2>({.origin = {{0, 0}}, .direction = {{0, 1}}});
+    auto line = scene.createObject(objects::Line2::Params{.origin = {0, 0}, .direction = {1, 0}});
+    auto ray = scene.createObject(objects::Ray2::Params{.origin = {0, 0}, .direction = {0, 1}});
     CHECK(line.has_value() && ray.has_value());
     auto lineGeometry = scene.find(*line)->geometry;
-    auto lineRepresentation = objects::createObject<objects::ObjectType::Rectangle2>({.size = {{10, 1}}});
-    auto rayRepresentation = objects::createObject<objects::ObjectType::Disk2>({.radius = 1});
+    auto lineRepresentation = objects::createObject(objects::Rectangle2::Params{.size = {10, 1}});
+    auto rayRepresentation = objects::createObject(objects::Disk2::Params{.radius = 1});
     CHECK(lineRepresentation.has_value() && rayRepresentation.has_value());
     CHECK(scene.setFiniteRepresentation(*line, objects::Geometry{std::move(*lineRepresentation)}).has_value());
     CHECK(scene.setFiniteRepresentation(*ray, objects::Geometry{std::move(*rayRepresentation)}).has_value());
@@ -64,10 +65,10 @@ void lineAndRayUseExplicitFiniteRepresentations() {
 
 void planeUsesFiniteRepresentation() {
     core::Scene scene;
-    auto plane = scene.createObject<objects::ObjectType::Plane3>({.normal = {{0, 1, 0}}, .offset = 0});
+    auto plane = scene.createObject(objects::Plane3::Params{.normal = {0, 1, 0}, .offset = 0});
     CHECK(plane.has_value());
     auto original = scene.find(*plane)->geometry;
-    auto representation = objects::createObject<objects::ObjectType::Box3>({.size = {{10, 0.1, 10}}});
+    auto representation = objects::createObject(objects::Box3::Params{.size = {10, 0.1, 10}});
     CHECK(representation.has_value());
     CHECK(scene.setFiniteRepresentation(*plane, objects::Geometry{std::move(*representation)}).has_value());
     auto snapshot = core::RenderPreparation::prepareSnapshot(scene, config3(), 100, 100);
@@ -78,7 +79,7 @@ void planeUsesFiniteRepresentation() {
 
 void hiddenInfiniteGeometryDoesNotFailPreparation() {
     core::Scene scene;
-    auto line = scene.createObject<objects::ObjectType::Line2>({.origin = {{0, 0}}, .direction = {{1, 0}}});
+    auto line = scene.createObject(objects::Line2::Params{.origin = {0, 0}, .direction = {1, 0}});
     CHECK(line.has_value());
     CHECK(scene.setVisibility(*line, false).has_value());
     auto snapshot = core::RenderPreparation::prepareSnapshot(scene, config2(), 100, 100);
@@ -88,9 +89,9 @@ void hiddenInfiniteGeometryDoesNotFailPreparation() {
 
 void invalidRepresentationDoesNotMutateInstance() {
     core::Scene scene;
-    auto line = scene.createObject<objects::ObjectType::Line2>({.origin = {{0, 0}}, .direction = {{1, 0}}});
+    auto line = scene.createObject(objects::Line2::Params{.origin = {0, 0}, .direction = {1, 0}});
     CHECK(line.has_value());
-    auto invalid = objects::createObject<objects::ObjectType::Ray2>({.origin = {{0, 0}}, .direction = {{1, 0}}});
+    auto invalid = objects::createObject(objects::Ray2::Params{.origin = {0, 0}, .direction = {1, 0}});
     CHECK(invalid.has_value());
     auto result = scene.setFiniteRepresentation(*line, objects::Geometry{std::move(*invalid)});
     CHECK(!result.has_value());

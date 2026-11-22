@@ -55,17 +55,16 @@ void testCreate3DObjects() {
     huynity::Engine engine{huynity::EngineConfig{.forceHeadless = true}};
 
     // 1. Создание Box3 со статической подвижностью по умолчанию
-    const huynity::objectlib::Box3Params boxParams{.size = {2.0, 4.0, 6.0}};
-    const auto boxId = engine.create<huynity::objectlib::ObjectType::Box3>(boxParams);
+    const huynity::objectlib::Box3::Params boxParams{.size = {2.0, 4.0, 6.0}};
+    const auto boxId = engine.create(boxParams);
     const auto view1 = engine.scene().view();
     CHECK(view1.instances.size() == 1);
     CHECK(view1.instances[0].id == boxId);
     CHECK(view1.instances[0].mobility == huynity::core::Mobility::Static);
 
     // 2. Создание Sphere3 с явной динамической подвижностью
-    const huynity::objectlib::Sphere3Params sphereParams{.radius = 2.5};
-    const auto sphereId =
-        engine.create<huynity::objectlib::ObjectType::Sphere3>(sphereParams, huynity::core::Mobility::Dynamic);
+    const huynity::objectlib::Sphere3::Params sphereParams{.radius = 2.5};
+    const auto sphereId = engine.create(sphereParams, huynity::core::Mobility::Dynamic);
     const auto view2 = engine.scene().view();
     CHECK(view2.instances.size() == 2);
     CHECK(view2.instances[1].id == sphereId);
@@ -74,7 +73,7 @@ void testCreate3DObjects() {
     // 3. Проверка обработки ошибок при недопустимых геометрических параметрах
     bool threw = false;
     try {
-        (void)engine.create<huynity::objectlib::ObjectType::Sphere3>(huynity::objectlib::Sphere3Params{.radius = -1.0});
+        (void)engine.create(huynity::objectlib::Sphere3::Params{.radius = -1.0});
     } catch (const std::runtime_error&) {
         threw = true;
     }
@@ -85,17 +84,16 @@ void testCreate2DObjects() {
     huynity::Engine engine{huynity::EngineConfig{.forceHeadless = true}};
 
     // 1. Создание 2D-прямоугольника через типизированный метод со статической подвижностью
-    const huynity::objectlib::Rectangle2Params rectParams{.size = {10.0, 20.0}};
-    const auto rectId =
-        engine.create<huynity::objectlib::ObjectType::Rectangle2>(rectParams, huynity::core::Mobility::Static);
+    const huynity::objectlib::Rectangle2::Params rectParams{.size = {10.0, 20.0}};
+    const auto rectId = engine.create(rectParams, huynity::core::Mobility::Static);
     const auto view1 = engine.scene().view();
     CHECK(view1.instances.size() == 1);
     CHECK(view1.instances[0].id == rectId);
     CHECK(view1.instances[0].mobility == huynity::core::Mobility::Static);
 
     // 2. Создание 2D-диска через ObjectSpec с динамической подвижностью
-    const huynity::objectlib::Disk2Params diskParams{.radius = 7.5};
-    const huynity::objectlib::ObjectSpec spec{diskParams};
+    const huynity::objectlib::Disk2::Params diskParams{.radius = 7.5};
+    const huynity::objectlib::GeometrySpec spec{diskParams};
     const auto diskId = engine.create(spec, huynity::core::Mobility::Dynamic);
     const auto view2 = engine.scene().view();
     CHECK(view2.instances.size() == 2);
@@ -105,7 +103,7 @@ void testCreate2DObjects() {
     // 3. Проверка обработки ошибок при некорректной спецификации
     bool threw = false;
     try {
-        const huynity::objectlib::ObjectSpec invalidSpec{huynity::objectlib::Disk2Params{.radius = -5.0}};
+        const huynity::objectlib::GeometrySpec invalidSpec{huynity::objectlib::Disk2::Params{.radius = -5.0}};
         (void)engine.create(invalidSpec);
     } catch (const std::runtime_error&) {
         threw = true;

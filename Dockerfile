@@ -7,6 +7,8 @@ ENV LC_ALL=C.UTF-8
 # Установка сборочных инструментов, зависимостей и утилит для Web VNC
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    gcc-14 \
+    g++-14 \
     cmake \
     ninja-build \
     git \
@@ -56,6 +58,8 @@ COPY . /app
 RUN cmake -B /app/build -S /app -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DHUYNITY_BUILD_ADAPTERS=ON \
+        -DCMAKE_C_COMPILER=gcc-14 \
+        -DCMAKE_CXX_COMPILER=g++-14 \
         -DHUYNITY_BUILD_EXAMPLES=ON \
         -DBUILD_TESTING=ON && \
     cmake --build /app/build --parallel

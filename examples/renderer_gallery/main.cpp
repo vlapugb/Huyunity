@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
     core::Scene scene;
 
     // Каркасный объект (wireframe = true): 3D куб Box3
-    auto cubeResult = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{2.0, 2.0, 2.0}}});
+    auto cubeResult = scene.createObject(objects::Box3::Params{.size = {2.0, 2.0, 2.0}});
     if (!cubeResult) {
         std::cerr << "Failed to create cube object\n";
         return 1;
@@ -136,26 +136,26 @@ int main(int argc, char* argv[]) {
     const auto cube = *cubeResult;
     (void)scene.setMobility(cube, core::Mobility::Dynamic);
     (void)scene.setWireframe(cube, true);
-    (void)scene.setLocalTransform(cube, math::translation(math::Vector3{{-2.5, 0.0, 10.0}}));
+    (void)scene.setLocalTransform(cube, math::translation(math::Vector3{-2.5, 0.0, 10.0}));
     (void)scene.setMaterial(cube, std::make_shared<const render::Material>(render::Material{
                                       .color = render::Color{0.1, 0.5, 1.0, 1.0},
                                   }));
 
     // Сглаженный объект с затенением Гуро: 3D сфера Sphere3
-    auto sphereResult = scene.createObject<objects::ObjectType::Sphere3>({.radius = 1.2});
+    auto sphereResult = scene.createObject(objects::Sphere3::Params{.radius = 1.2});
     if (!sphereResult) {
         std::cerr << "Failed to create sphere object\n";
         return 1;
     }
     const auto sphere = *sphereResult;
     (void)scene.setMobility(sphere, core::Mobility::Dynamic);
-    (void)scene.setLocalTransform(sphere, math::translation(math::Vector3{{2.5, 0.0, 10.0}}));
+    (void)scene.setLocalTransform(sphere, math::translation(math::Vector3{2.5, 0.0, 10.0}));
     (void)scene.setMaterial(sphere, std::make_shared<const render::Material>(render::Material{
                                         .color = render::Color{0.9, 0.25, 0.2, 1.0},
                                     }));
 
     // Текстурированный 2D-спрайт: прямоугольник Rectangle2 с альфа-прозрачной текстурой
-    auto spriteResult = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{80.0, 80.0}}});
+    auto spriteResult = scene.createObject(objects::Rectangle2::Params{.size = {80.0, 80.0}});
     if (!spriteResult) {
         std::cerr << "Failed to create sprite object\n";
         return 1;
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
         .directional =
             {
                 {
-                    .direction = math::Vector3{{1.0, 1.0, 1.0}},
+                    .direction = math::Vector3{1.0, 1.0, 1.0},
                     .color = render::Color{1.0, 1.0, 1.0, 1.0},
                     .intensity = 0.75,
                 },
@@ -256,12 +256,12 @@ int main(int argc, char* argv[]) {
             const auto cubeRot = math::compose(math::rotation(math::RotationAxis::X, angle * 0.7),
                                                math::rotation(math::RotationAxis::Y, angle));
             (void)scene.setLocalTransform(cube,
-                                          math::compose(math::translation(math::Vector3{{-2.5, 0.0, 10.0}}), cubeRot));
+                                          math::compose(math::translation(math::Vector3{-2.5, 0.0, 10.0}), cubeRot));
 
             const auto sphereRot = math::compose(math::rotation(math::RotationAxis::Y, angle * 0.8),
                                                  math::rotation(math::RotationAxis::Z, angle * 0.5));
             (void)scene.setLocalTransform(sphere,
-                                          math::compose(math::translation(math::Vector3{{2.5, 0.0, 10.0}}), sphereRot));
+                                          math::compose(math::translation(math::Vector3{2.5, 0.0, 10.0}), sphereRot));
         });
 
         // Подготовка RenderSnapshot

@@ -3,7 +3,8 @@
 #include "huynity/core/object_store.h"
 #include "huynity/core/tessellation_cache.h"
 #include "huynity/math/transform.h"
-#include "huynity/objectlib/create_object.h"
+#include "huynity/objectlib/geometry.h"
+#include "huynity/objectlib/objects.h"
 #include "huynity/objectlib/operations/bounds.h"
 #include "huynity/render_contracts/render_snapshot.h"
 
@@ -14,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <sys/types.h>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -79,7 +81,7 @@ enum class SceneError {
 };
 
 struct CreateObjectCommand {
-    objectlib::ObjectSpec spec;
+    objectlib::GeometrySpec spec;
 };
 
 struct CreateInstanceCommand {
@@ -173,18 +175,18 @@ public:
     using Result = std::expected<void, SceneError>;
     using SpatialResult = std::expected<void, objectlib::GeometryError>;
 
-    template <objectlib::ObjectType kind>
-        requires objectlib::SupportedObject<kind>
-    [[nodiscard]] CreateResult createObject(objectlib::ParamsFor<kind> params) {
-        auto geometry = objectlib::createObject<kind>(std::move(params));
+    template <typename T, typename... Ts>
+        requires objectlib::SupportedObject<T>
+    [[nodiscard]] CreateResult createObject(Ts&&... args) {
+        auto geometry = objectlib::createObject<T>(std::forward<Ts>(args)...);
         if (!geometry) {
             return std::unexpected(geometry.error());
         }
         return registerGeometry(objectlib::Geometry{std::move(*geometry)});
     }
 
-    [[nodiscard]] CreateResult createObject(objectlib::ObjectSpec spec) {
-        auto geometry = objectlib::createObject(std::move(spec));
+    [[nodiscard]] CreateResult createObject(objectlib::GeometrySpec spec) {
+        auto geometry = objectlib::createGeometry(std::move(spec));
         if (!geometry) {
             return std::unexpected(geometry.error());
         }

@@ -1,5 +1,5 @@
 add_library(huynity_objectlib
-    src/creation/create_object.cpp
+    src/geometry.cpp
     src/collections/polygon2.cpp
     src/shapes/shapes.cpp
     src/operations/triangulate.cpp

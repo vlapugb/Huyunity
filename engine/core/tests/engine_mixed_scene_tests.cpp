@@ -137,23 +137,20 @@ void testMixedSceneRenderingAndHudToggle() {
     engine.setCamera(cam2);
 
     // 3. Создание 3D Box3 в мировом пространстве (красный материал)
-    const auto boxId =
-        engine.create<huynity::objectlib::ObjectType::Box3>(huynity::objectlib::Box3Params{.size = {4.0, 4.0, 4.0}});
+    const auto boxId = engine.create(huynity::objectlib::Box3::Params{.size = {4.0, 4.0, 4.0}});
     (void)engine.scene().setLocalTransform(boxId,
                                            huynity::math::translation(huynity::math::Vector3{{-4.0, 0.0, 10.0}}));
     (void)engine.scene().setMaterial(boxId, std::make_shared<huynity::render_contracts::Material>(
                                                 huynity::render_contracts::Color{1.0, 0.0, 0.0, 1.0}));
 
     // 4. Создание 2D Disk2 в мировом пространстве (зелёный материал)
-    const auto diskId =
-        engine.create<huynity::objectlib::ObjectType::Disk2>(huynity::objectlib::Disk2Params{.radius = 2.0});
+    const auto diskId = engine.create(huynity::objectlib::Disk2::Params{.radius = 2.0});
     (void)engine.scene().setLocalTransform(diskId, huynity::math::translation(huynity::math::Vector2{{4.0, 0.0}}));
     (void)engine.scene().setMaterial(diskId, std::make_shared<huynity::render_contracts::Material>(
                                                  huynity::render_contracts::Color{0.0, 1.0, 0.0, 1.0}));
 
     // 5. Создание HUD Rectangle2 (жёлтый материал)
-    const auto hudId = engine.create<huynity::objectlib::ObjectType::Rectangle2>(
-        huynity::objectlib::Rectangle2Params{.size = {20.0, 20.0}});
+    const auto hudId = engine.create(huynity::objectlib::Rectangle2::Params{.size = {20.0, 20.0}});
     (void)engine.scene().setLocalTransform(hudId, huynity::math::translation(huynity::math::Vector2{{40.0, 50.0}}));
     (void)engine.scene().setRenderProperties(hudId, huynity::core::RenderSpace::Hud, 0, 0);
     (void)engine.scene().setMaterial(hudId, std::make_shared<huynity::render_contracts::Material>(
@@ -265,15 +262,13 @@ void testPassOrder() {
     engine.setCamera(cam2);
 
     // 3D Box3 в центре мира (красный)
-    const auto boxId =
-        engine.create<huynity::objectlib::ObjectType::Box3>(huynity::objectlib::Box3Params{.size = {4.0, 4.0, 4.0}});
+    const auto boxId = engine.create(huynity::objectlib::Box3::Params{.size = {4.0, 4.0, 4.0}});
     (void)engine.scene().setLocalTransform(boxId, huynity::math::translation(huynity::math::Vector3{{0.0, 0.0, 10.0}}));
     (void)engine.scene().setMaterial(boxId, std::make_shared<huynity::render_contracts::Material>(
                                                 huynity::render_contracts::Color{1.0, 0.0, 0.0, 1.0}));
 
     // 2D Disk2 в центре мира (зелёный), перекрывающий 3D Box
-    const auto diskId =
-        engine.create<huynity::objectlib::ObjectType::Disk2>(huynity::objectlib::Disk2Params{.radius = 2.0});
+    const auto diskId = engine.create(huynity::objectlib::Disk2::Params{.radius = 2.0});
     (void)engine.scene().setLocalTransform(diskId, huynity::math::translation(huynity::math::Vector2{{0.0, 0.0}}));
     (void)engine.scene().setMaterial(diskId, std::make_shared<huynity::render_contracts::Material>(
                                                  huynity::render_contracts::Color{0.0, 1.0, 0.0, 1.0}));

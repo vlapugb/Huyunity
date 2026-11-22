@@ -28,9 +28,9 @@ render::Camera2 camera2() {
 
 void world3dContainsAllVisibleStateAfterCommands() {
     core::Scene scene;
-    auto visible = scene.createObject<objects::ObjectType::Box3>({.size = {{2, 2, 2}}});
-    auto hidden = scene.createObject<objects::ObjectType::Box3>({.size = {{2, 2, 2}}});
-    auto outside = scene.createObject<objects::ObjectType::Box3>({.size = {{2, 2, 2}}});
+    auto visible = scene.createObject(objects::Box3::Params{.size = {2, 2, 2}});
+    auto hidden = scene.createObject(objects::Box3::Params{.size = {2, 2, 2}});
+    auto outside = scene.createObject(objects::Box3::Params{.size = {2, 2, 2}});
     CHECK(visible.has_value() && hidden.has_value() && outside.has_value());
     auto material = std::make_shared<const render::Material>(render::Material{.color = {.red = 0.5}});
     const std::vector<core::CommandRequest> commands{
@@ -50,8 +50,8 @@ void world3dContainsAllVisibleStateAfterCommands() {
 
 void world3dDoesNotDependOnPreviousFrame() {
     core::Scene scene;
-    auto first = scene.createObject<objects::ObjectType::Box3>({.size = {{2, 2, 2}}});
-    auto second = scene.createObject<objects::ObjectType::Box3>({.size = {{2, 2, 2}}});
+    auto first = scene.createObject(objects::Box3::Params{.size = {2, 2, 2}});
+    auto second = scene.createObject(objects::Box3::Params{.size = {2, 2, 2}});
     CHECK(first.has_value() && second.has_value());
     auto initial = core::RenderPreparation::prepareWorld3D(scene, camera3());
     CHECK(initial.has_value() && initial->drawItems.size() == 2);
@@ -67,9 +67,9 @@ void world3dDoesNotDependOnPreviousFrame() {
 
 void world2dUsesIndependentCameraAndVisibility() {
     core::Scene scene;
-    auto visible = scene.createObject<objects::ObjectType::Rectangle2>({.size = {{2, 2}}});
-    auto hidden = scene.createObject<objects::ObjectType::Rectangle2>({.size = {{2, 2}}});
-    auto outside = scene.createObject<objects::ObjectType::Rectangle2>({.size = {{2, 2}}});
+    auto visible = scene.createObject(objects::Rectangle2::Params{.size = {2, 2}});
+    auto hidden = scene.createObject(objects::Rectangle2::Params{.size = {2, 2}});
+    auto outside = scene.createObject(objects::Rectangle2::Params{.size = {2, 2}});
     CHECK(visible.has_value() && hidden.has_value() && outside.has_value());
     CHECK(scene.setVisibility(*hidden, false).has_value());
     CHECK(scene.setLocalTransform(*outside, math::translation(math::Vector2{{20, 0}})).has_value());
@@ -83,8 +83,8 @@ void world2dUsesIndependentCameraAndVisibility() {
 
 void perspectiveCullsDepthAndHorizontalBounds() {
     core::Scene scene;
-    auto visible = scene.createObject<objects::ObjectType::Sphere3>({.radius = 1});
-    auto behind = scene.createObject<objects::ObjectType::Sphere3>({.radius = 1});
+    auto visible = scene.createObject(objects::Sphere3::Params{.radius = 1});
+    auto behind = scene.createObject(objects::Sphere3::Params{.radius = 1});
     CHECK(visible.has_value() && behind.has_value());
     CHECK(scene.setLocalTransform(*visible, math::translation(math::Vector3{{0, 0, 5}})).has_value());
     CHECK(scene.setLocalTransform(*behind, math::translation(math::Vector3{{0, 0, -5}})).has_value());
@@ -97,7 +97,7 @@ void perspectiveCullsDepthAndHorizontalBounds() {
 
 void cameraTransformsAffectBoth3dCullingModes() {
     core::Scene scene;
-    auto object = scene.createObject<objects::ObjectType::Box3>({.size = {{1, 1, 1}}});
+    auto object = scene.createObject(objects::Box3::Params{.size = {1, 1, 1}});
     CHECK(object.has_value());
     auto orthographic = camera3();
     orthographic.worldToView = math::translation(math::Vector3{{-20, 0, 0}});

@@ -7,6 +7,7 @@ namespace huynity::objectlib {
 enum class CreateErrorCode {
     NonFiniteParameter,
     InvalidRadius,
+    InvalidHeight,
     TooFewVertices,
     InvalidDirection,
     InvalidDimensions,

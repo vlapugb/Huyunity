@@ -8,7 +8,6 @@
 #include "huynity/renderer/software_renderer.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -82,7 +81,7 @@ void scenario2DMovementAndPassOrder() {
     core::Scene scene;
 
     // 1. Статическое 2D-окружение: прямоугольный фон (16x16 в мировых координатах)
-    auto staticBackground = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{16.0, 16.0}}});
+    auto staticBackground = scene.createObject(objects::Rectangle2::Params{.size = {16.0, 16.0}});
     CHECK(staticBackground.has_value());
     const auto staticId = *staticBackground;
     CHECK(scene.setMobility(staticId, core::Mobility::Static).has_value());
@@ -90,7 +89,7 @@ void scenario2DMovementAndPassOrder() {
     CHECK(scene.setMaterial(staticId, makeMaterial(0.0, 0.0, 1.0)).has_value());
 
     // 2. Динамический 2D-объект: диск радиуса 2.0, начальная позиция (-3, 0)
-    auto dynamicDisk = scene.createObject<objects::ObjectType::Disk2>({.radius = 2.0});
+    auto dynamicDisk = scene.createObject(objects::Disk2::Params{.radius = 2.0});
     CHECK(dynamicDisk.has_value());
     const auto dynamicId = *dynamicDisk;
     CHECK(scene.setMobility(dynamicId, core::Mobility::Dynamic).has_value());
@@ -99,7 +98,7 @@ void scenario2DMovementAndPassOrder() {
     CHECK(scene.setMaterial(dynamicId, makeMaterial(1.0, 0.0, 0.0)).has_value());
 
     // 3. Элемент HUD в экранных пикселях: прямоугольник 20x10 с центром в (15, 12)
-    auto hudElement = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{20.0, 10.0}}});
+    auto hudElement = scene.createObject(objects::Rectangle2::Params{.size = {20.0, 10.0}});
     CHECK(hudElement.has_value());
     const auto hudId = *hudElement;
     CHECK(scene.setLocalTransform(hudId, math::translation(math::Vector2{{15.0, 12.0}})).has_value());
@@ -188,14 +187,14 @@ void scenario2DMovementAndPassOrder() {
 void scenario2DCommandMovement() {
     core::Scene scene;
 
-    auto staticBackground = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{16.0, 16.0}}});
+    auto staticBackground = scene.createObject(objects::Rectangle2::Params{.size = {16.0, 16.0}});
     CHECK(staticBackground.has_value());
     const auto staticId = *staticBackground;
     CHECK(scene.setMobility(staticId, core::Mobility::Static).has_value());
     CHECK(scene.setRenderProperties(staticId, core::RenderSpace::World, 0, 0).has_value());
     CHECK(scene.setMaterial(staticId, makeMaterial(0.0, 0.0, 1.0)).has_value());
 
-    auto dynamicDisk = scene.createObject<objects::ObjectType::Disk2>({.radius = 2.0});
+    auto dynamicDisk = scene.createObject(objects::Disk2::Params{.radius = 2.0});
     CHECK(dynamicDisk.has_value());
     const auto dynamicId = *dynamicDisk;
     CHECK(scene.setMobility(dynamicId, core::Mobility::Dynamic).has_value());
@@ -203,7 +202,7 @@ void scenario2DCommandMovement() {
     CHECK(scene.setRenderProperties(dynamicId, core::RenderSpace::World, 1, 0).has_value());
     CHECK(scene.setMaterial(dynamicId, makeMaterial(1.0, 0.0, 0.0)).has_value());
 
-    auto hudElement = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{20.0, 10.0}}});
+    auto hudElement = scene.createObject(objects::Rectangle2::Params{.size = {20.0, 10.0}});
     CHECK(hudElement.has_value());
     const auto hudId = *hudElement;
     CHECK(scene.setLocalTransform(hudId, math::translation(math::Vector2{{15.0, 12.0}})).has_value());

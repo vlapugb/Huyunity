@@ -53,18 +53,18 @@ int main(int argc, char* argv[]) {
     // 2. Создание сцены Core: 3D вращающийся куб со светом и материалом + экранный элемент HUD
     core::Scene scene;
 
-    auto cubeResult = scene.createObject<objects::ObjectType::Box3>({.size = math::Vector3{{4.0, 4.0, 4.0}}});
+    auto cubeResult = scene.createObject(objects::Box3::Params{.size = {4.0, 4.0, 4.0}});
     if (!cubeResult) {
         std::cerr << "Failed to create cube object: " << static_cast<int>(cubeResult.error().code) << "\n";
         return 1;
     }
     const auto cubeId = *cubeResult;
     (void)scene.setMobility(cubeId, core::Mobility::Dynamic);
-    (void)scene.setLocalTransform(cubeId, math::translation(math::Vector3{{0.0, 0.0, 10.0}}));
+    (void)scene.setLocalTransform(cubeId, math::translation(math::Vector3{0.0, 0.0, 10.0}));
     (void)scene.setRenderProperties(cubeId, core::RenderSpace::World, 0, 0);
     (void)scene.setMaterial(cubeId, std::make_shared<const render::Material>(render::Color{0.2, 0.8, 0.3, 1.0}));
 
-    auto hudResult = scene.createObject<objects::ObjectType::Rectangle2>({.size = math::Vector2{{16.0, 8.0}}});
+    auto hudResult = scene.createObject(objects::Rectangle2::Params{.size = {16.0, 8.0}});
     if (!hudResult) {
         std::cerr << "Failed to create HUD object: " << static_cast<int>(hudResult.error().code) << "\n";
         return 1;
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
         .directional =
             {
                 {
-                    .direction = math::Vector3{{1.0, 1.0, 1.0}},
+                    .direction = math::Vector3{1.0, 1.0, 1.0},
                     .color = render::Color{1.0, 1.0, 1.0, 1.0},
                     .intensity = 0.75,
                 },
@@ -172,7 +172,7 @@ int main(int argc, char* argv[]) {
             cubeAngle += 1.5 * dt;
             const auto rotX = math::rotation(math::RotationAxis::X, cubeAngle * 0.7);
             const auto rotY = math::rotation(math::RotationAxis::Y, cubeAngle);
-            const auto trans = math::translation(math::Vector3{{0.0, 0.0, 10.0}});
+            const auto trans = math::translation(math::Vector3{0.0, 0.0, 10.0});
             const auto cubeTransform = math::compose(trans, math::compose(rotX, rotY));
             (void)scene.setLocalTransform(cubeId, cubeTransform);
         });

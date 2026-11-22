@@ -1,9 +1,11 @@
 #include "huynity/core/scene.h"
+#include "huynity/objectlib/geometry.h"
+#include "huynity/objectlib/shapes/circle2.h"
+#include "huynity/objectlib/shapes/sphere3.h"
 
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <variant>
 
 namespace core = huynity::core;
 namespace objects = huynity::objectlib;
@@ -17,7 +19,7 @@ namespace objects = huynity::objectlib;
 
 void typedCreationAndAtomicErrors() {
     core::Scene scene;
-    auto created = scene.createObject<objects::ObjectType::Circle2>({.radius = 2});
+    auto created = scene.createObject(objects::Circle2::Params{.radius = 2});
     CHECK(created.has_value());
     CHECK(scene.size() == 1);
     const auto* instance = scene.find(*created);
@@ -25,7 +27,7 @@ void typedCreationAndAtomicErrors() {
     CHECK(instance->geometry != nullptr);
     CHECK(std::get<objects::Circle2>(*instance->geometry).radius() == 2);
 
-    auto rejected = scene.createObject<objects::ObjectType::Circle2>({.radius = 0});
+    auto rejected = scene.createObject(objects::Circle2::Params{.radius = 0});
     CHECK(!rejected.has_value());
     CHECK(rejected.error().code == objects::CreateErrorCode::InvalidRadius);
     CHECK(scene.size() == 1);
@@ -35,12 +37,13 @@ void typedCreationAndAtomicErrors() {
 
 void runtimeCreationAndAtomicErrors() {
     core::Scene scene;
-    auto created = scene.createObject(objects::ObjectSpec{objects::Sphere3Params{.radius = 3}});
+    auto spec = objects::GeometrySpec{objects::Sphere3::Params{.radius = 3}};
+    auto created = scene.createObject(spec);
     CHECK(created.has_value());
     CHECK(scene.size() == 1);
     CHECK(std::get<objects::Sphere3>(*scene.find(*created)->geometry).radius() == 3);
 
-    auto rejected = scene.createObject(objects::ObjectSpec{objects::Sphere3Params{.radius = -1}});
+    auto rejected = scene.createObject(objects::GeometrySpec{objects::Sphere3::Params{.radius = -1}});
     CHECK(!rejected.has_value());
     CHECK(rejected.error().code == objects::CreateErrorCode::InvalidRadius);
     CHECK(scene.size() == 1);
@@ -49,7 +52,7 @@ void runtimeCreationAndAtomicErrors() {
 
 void sharedGeometry() {
     core::Scene scene;
-    const auto source = scene.createObject<objects::ObjectType::Box3>({.size = {{1, 2, 3}}});
+    const auto source = scene.createObject(objects::Box3::Params{.size = {{1, 2, 3}}});
     CHECK(source.has_value());
     const auto* original = scene.find(*source);
     const auto resource = original->geometry;

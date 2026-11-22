@@ -1,4 +1,5 @@
 #include "huynity/core/render_preparation.h"
+#include "huynity/math/vector_unsigned.h"
 
 #include <array>
 #include <cstdint>
@@ -21,9 +22,9 @@ namespace render = huynity::render_contracts;
     } while (false)
 
 std::array<std::uint32_t, 3> readTriangle(std::span<const std::byte> bytes, std::size_t index) {
-    objects::TriangleIndices triangle;
+    math::VectorUnsigned3 triangle;
     std::memcpy(&triangle, bytes.data() + index * sizeof(triangle), sizeof(triangle));
-    return triangle.indices;
+    return {triangle[0], triangle[1], triangle[2]};
 }
 
 render::OrthographicCamera3 camera3() {
@@ -32,7 +33,7 @@ render::OrthographicCamera3 camera3() {
 
 void sharedMeshUsesOneOwnerAndIndices() {
     core::Scene scene;
-    auto source = scene.createObject<objects::ObjectType::Box3>({.size = {{1, 2, 3}}});
+    auto source = scene.createObject(objects::Box3::Params{.size = {1, 2, 3}});
     CHECK(source.has_value());
     auto instance = scene.createInstance(*source);
     CHECK(instance.has_value());
@@ -62,7 +63,7 @@ void sharedMeshUsesOneOwnerAndIndices() {
 
 void snapshotOutlivesRemovedSceneObject() {
     core::Scene scene;
-    auto id = scene.createObject<objects::ObjectType::Box3>({.size = {{2, 2, 2}}});
+    auto id = scene.createObject(objects::Box3::Params{.size = {{2, 2, 2}}});
     CHECK(id.has_value());
     core::PassesConfig config;
     config.camera3 = camera3();
@@ -76,14 +77,14 @@ void snapshotOutlivesRemovedSceneObject() {
     CHECK(snapshot->resources3[0].owner == owner);
     CHECK(snapshot->resources3[0].positions.data() == positions);
     CHECK(snapshot->resources3[0].positions.size() == 8);
-    CHECK(snapshot->resources3[0].triangles.size() == 12 * sizeof(objects::TriangleIndices));
+    CHECK(snapshot->resources3[0].triangles.size() == 12 * sizeof(math::VectorUnsigned3));
     CHECK(readTriangle(snapshot->resources3[0].triangles, 0) == std::array<std::uint32_t, 3>{0, 2, 1});
     CHECK(readTriangle(snapshot->resources3[0].triangles, 11) == std::array<std::uint32_t, 3>{3, 4, 7});
 }
 
 void hudAndWorld2dUseResourceAndMaterialTables() {
     core::Scene scene;
-    auto world = scene.createObject<objects::ObjectType::Rectangle2>({.size = {{2, 2}}});
+    auto world = scene.createObject(objects::Rectangle2::Params{.size = {2, 2}});
     CHECK(world.has_value());
     auto hud = scene.createInstance(*world);
     CHECK(hud.has_value());

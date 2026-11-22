@@ -3,9 +3,8 @@
 #include "huynity/adapters/window/input_state.h"
 #include "huynity/adapters/window/window_adapter.h"
 #include "huynity/core/scene.h"
-#include "huynity/objectlib/create_object.h"
 #include "huynity/objectlib/geometry.h"
-#include "huynity/objectlib/object_traits.h"
+#include "huynity/objectlib/objects.h"
 #include "huynity/render_contracts/render_snapshot.h"
 #include "huynity/renderer/software_renderer.h"
 #include "huynity/runtime/fixed_step_update.h"
@@ -23,8 +22,8 @@ namespace huynity::objectlib {
 /**
  * @brief Псевдоним типизированных параметров фигуры по её виду ObjectType.
  */
-template <ObjectType kind>
-using TypedParams = ParamsFor<kind>;
+template <SupportedObject T>
+using TypedParams = T::Params;
 
 } // namespace huynity::objectlib
 
@@ -183,11 +182,9 @@ public:
      * @return идентификатор созданной сущности в сцене ObjectId.
      * @throws std::runtime_error при ошибке валидации параметров или создания геометрии.
      */
-    template <objectlib::ObjectType kind>
-        requires objectlib::SupportedObject<kind>
-    core::ObjectId create(const objectlib::TypedParams<kind>& params,
-                          core::Mobility mobility = core::Mobility::Static) {
-        auto result = m_scene.createObject<kind>(params);
+    template <objectlib::SupportedObject T>
+    core::ObjectId create(const T::Params& params, core::Mobility mobility = core::Mobility::Static) {
+        auto result = m_scene.createObject<T>(params);
         if (!result) {
             throw std::runtime_error("Failed to create object in scene");
         }
@@ -204,7 +201,7 @@ public:
      * @return идентификатор созданной сущности в сцене ObjectId.
      * @throws std::runtime_error при ошибке валидации спецификации или создания геометрии.
      */
-    core::ObjectId create(const objectlib::ObjectSpec& spec, core::Mobility mobility = core::Mobility::Static);
+    core::ObjectId create(const objectlib::GeometrySpec& spec, core::Mobility mobility = core::Mobility::Static);
 
     // --- Ввод и окно ---
 

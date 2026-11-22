@@ -5,7 +5,6 @@
 #include "huynity/core/render_preparation.h"
 #include "huynity/math/transform.h"
 #include "huynity/objectlib/operations/bounds.h"
-#include "huynity/objectlib/params/point_params.h"
 
 #include <algorithm>
 #include <chrono>
@@ -99,7 +98,7 @@ render_contracts::Color Engine::clearColor() const noexcept {
     return m_clearColor;
 }
 
-core::ObjectId Engine::create(const objectlib::ObjectSpec& spec, core::Mobility mobility) {
+core::ObjectId Engine::create(const objectlib::GeometrySpec& spec, core::Mobility mobility) {
     auto result = m_scene.createObject(spec);
     if (!result) {
         throw std::runtime_error("Failed to create object from ObjectSpec in scene");
@@ -375,13 +374,13 @@ void Engine::preview(const objectlib::Geometry& geometry, const EngineConfig& co
     const bool is2D = is2DGeometry(geometry);
     core::ObjectId id{};
     if (is2D) {
-        auto res = engine.scene().createObject<objectlib::ObjectType::Point2>(objectlib::Point2Params{});
+        auto res = engine.scene().createObject(objectlib::Point2::Params{.coordinates = {0, 0}});
         if (!res) {
             throw std::runtime_error("Failed to create preview object in scene");
         }
         id = *res;
     } else {
-        auto res = engine.scene().createObject<objectlib::ObjectType::Point3>(objectlib::Point3Params{});
+        auto res = engine.scene().createObject(objectlib::Point3::Params{.coordinates = {0, 0, 0}});
         if (!res) {
             throw std::runtime_error("Failed to create preview object in scene");
         }
