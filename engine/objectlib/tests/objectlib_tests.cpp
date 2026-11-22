@@ -44,8 +44,8 @@ static_assert(HasBounds<objects::Sphere3> && !HasBounds<objects::Line2> && !HasB
               !HasBounds<objects::Plane3>);
 static_assert(
     std::same_as<decltype(std::declval<const objects::Polyline2&>().vertices()), std::span<const math::Point2>>);
-static_assert(std::variant_size_v<objects::Geometry> == 23);
-static_assert(std::variant_size_v<objects::GeometrySpec> == 23);
+static_assert(std::variant_size_v<objects::Geometry> == 26);
+static_assert(std::variant_size_v<objects::GeometrySpec> == 26);
 
 template <typename T, typename E>
 T take(std::expected<T, E> value) {
