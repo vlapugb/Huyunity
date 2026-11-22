@@ -5,6 +5,10 @@
 #include <expected>
 #include <memory>
 
+namespace huynity {
+class Engine;
+}
+
 namespace huynity::renderer {
 
 class GlRenderer {
@@ -24,7 +28,13 @@ public:
     capture(const render_contracts::RenderSnapshot& snapshot);
 
 private:
+    friend class huynity::Engine;
+
     struct Implementation;
+
+    /// @brief Освобождает состояние CPU, когда контекст недоступен. GPU-объекты освобождает владелец контекста.
+    void abandonContext() noexcept;
+
     std::unique_ptr<Implementation> m_implementation;
 };
 

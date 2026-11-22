@@ -1,6 +1,9 @@
+#include "huynity/core/render_preparation.h"
 #include "huynity/core/scene.h"
 
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -72,6 +75,121 @@ void geometryChangeInvalidatesOnlyNewVersion() {
     CHECK(!scene.find(id)->dirty.tessellation);
 }
 
+void cacheReleasesGeometryAndDistinguishesVersions() {
+    const auto sphere = objects::createObject<objects::ObjectType::Sphere3>({.radius = 2});
+    CHECK(sphere.has_value());
+    const auto copy = std::make_shared<const objects::Geometry>(*sphere);
+    auto geometry = std::make_shared<const objects::Geometry>(*sphere);
+    const std::weak_ptr<const objects::Geometry> owner{geometry};
+    core::TessellationCache cache;
+    const auto initial = cache.get(geometry, 1, {});
+    const auto nextVersion = cache.get(geometry, 2, {});
+    const auto distinctGeometry = cache.get(copy, 1, {});
+    CHECK(initial.has_value() && nextVersion.has_value() && distinctGeometry.has_value());
+    CHECK(*nextVersion != *initial && *distinctGeometry != *initial);
+    CHECK(cache.size() == 3);
+
+    CHECK(cache.get(geometry, 1, {}) == initial);
+    CHECK(cache.calculations() == 3);
+    CHECK(cache.cacheHits() == 1);
+    cache.markSourceDetached(geometry);
+    geometry.reset();
+    CHECK(owner.expired());
+    cache.collectDetachedSources();
+    CHECK(cache.size() == 1);
+}
+
+void sourceAddressReuseDoesNotReturnOldMesh() {
+    auto firstSphere = objects::createObject<objects::ObjectType::Sphere3>({.radius = 2});
+    auto nextSphere = objects::createObject<objects::ObjectType::Sphere3>({.radius = 3});
+    CHECK(firstSphere.has_value() && nextSphere.has_value());
+    objects::Geometry storage{std::move(*firstSphere)};
+    core::TessellationCache cache;
+    auto firstOwner = std::shared_ptr<const objects::Geometry>{&storage, [](const auto*) {}};
+    const auto initial = cache.get(firstOwner, 1, {});
+    CHECK(initial.has_value());
+    firstOwner.reset();
+
+    storage = std::move(*nextSphere);
+    const auto nextOwner = std::shared_ptr<const objects::Geometry>{&storage, [](const auto*) {}};
+    const auto next = cache.get(nextOwner, 1, {});
+    CHECK(next.has_value() && *next != *initial);
+    CHECK(cache.size() == 1);
+    CHECK(cache.calculations() == 2);
+    CHECK(cache.cacheHits() == 0);
+}
+
+void sceneReleasesMeshAfterLastSharedInstance() {
+    core::Scene scene;
+    const auto source = createSphere(scene);
+    const auto instance = scene.createInstance(source);
+    CHECK(instance.has_value());
+    const auto* entry = scene.find(source);
+    CHECK(entry != nullptr);
+    const std::weak_ptr<const objects::Geometry> geometry{entry->geometry};
+    std::weak_ptr<const objects::TessellatedGeometry> mesh;
+    {
+        const auto cached = scene.tessellation(source);
+        CHECK(cached.has_value());
+        mesh = *cached;
+    }
+    CHECK(scene.removeSubtree(source).has_value());
+    CHECK(!geometry.expired());
+    CHECK(scene.tessellation(*instance) == mesh.lock());
+    CHECK(scene.tessellationCalculations() == 1);
+    CHECK(scene.removeSubtree(*instance).has_value());
+    core::PassesConfig config;
+    config.hudEnabled = false;
+    CHECK(core::RenderPreparation::preparePasses(scene, config).has_value());
+    CHECK(geometry.expired() && mesh.expired());
+}
+
+void sceneReleasesMeshAfterViewDropsSource() {
+    core::Scene scene;
+    const auto source = createSphere(scene);
+    auto view = scene.view();
+    const std::weak_ptr<const objects::Geometry> geometry{view.instances.front().geometry};
+    std::weak_ptr<const objects::TessellatedGeometry> mesh;
+    {
+        const auto cached = scene.tessellation(source);
+        CHECK(cached.has_value());
+        mesh = *cached;
+    }
+    CHECK(scene.removeSubtree(source).has_value());
+    core::PassesConfig config;
+    config.hudEnabled = false;
+    CHECK(core::RenderPreparation::preparePasses(scene, config).has_value());
+    CHECK(!geometry.expired() && !mesh.expired());
+    view.instances.clear();
+    CHECK(geometry.expired());
+    for (std::size_t frame = 0; frame < 120; ++frame) {
+        CHECK(core::RenderPreparation::preparePasses(scene, config).has_value());
+    }
+    CHECK(mesh.expired());
+}
+
+void invalidDeviationDoesNotEnterCache() {
+    const auto sphere = objects::createObject<objects::ObjectType::Sphere3>({.radius = 2});
+    CHECK(sphere.has_value());
+    const auto geometry = std::make_shared<const objects::Geometry>(*sphere);
+    const auto unsupported = std::make_shared<const objects::Geometry>(math::Point3{});
+    const objects::TessellationOptions invalidOptions{.maxDeviation = std::numeric_limits<double>::quiet_NaN()};
+    core::TessellationCache cache;
+    const auto valid = cache.get(geometry, 1, {});
+    CHECK(valid.has_value());
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        const auto invalid = cache.get(geometry, 1, invalidOptions);
+        CHECK(!invalid.has_value() && invalid.error().code == objects::GeometryErrorCode::InvalidOptions);
+    }
+    const auto unsupportedResult = cache.get(unsupported, 1, invalidOptions);
+    CHECK(!unsupportedResult.has_value() &&
+          unsupportedResult.error().code == objects::GeometryErrorCode::UnsupportedOperation);
+    CHECK(cache.size() == 1);
+    CHECK(cache.calculations() == 4);
+    CHECK(cache.cacheHits() == 0);
+    CHECK(cache.get(geometry, 1, {}) == valid);
+}
+
 void geometryErrorLeavesSceneAndCacheConsistent() {
     core::Scene scene;
     const auto id = createSphere(scene);
@@ -100,6 +218,11 @@ int main() {
         reuseAcrossMovementAndSharedInstances();
         qualityKeyIncludesEveryOption();
         geometryChangeInvalidatesOnlyNewVersion();
+        cacheReleasesGeometryAndDistinguishesVersions();
+        sourceAddressReuseDoesNotReturnOldMesh();
+        sceneReleasesMeshAfterLastSharedInstance();
+        sceneReleasesMeshAfterViewDropsSource();
+        invalidDeviationDoesNotEnterCache();
         geometryErrorLeavesSceneAndCacheConsistent();
         std::cout << "tessellation_cache: OK\n";
     } catch (const std::exception& error) {

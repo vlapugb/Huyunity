@@ -1,6 +1,7 @@
 #include "huynity/adapters/window/headless_window.h"
 #include "huynity/adapters/window/window_factory.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -60,8 +61,13 @@ void testDefaultCreateWindow() {
     if (dynamic_cast<window::HeadlessWindow*>(win.get()) != nullptr) {
         CHECK(events.empty());
     } else {
-        for (const auto& event : events) {
-            CHECK(std::holds_alternative<window::WindowResizedEvent>(event));
+        // При создании нативного окна композитор может одновременно доставить события ввода.
+        const auto lastResize = std::find_if(events.crbegin(), events.crend(), [](const auto& event) {
+            return std::holds_alternative<window::WindowResizedEvent>(event);
+        });
+        if (lastResize != events.crend()) {
+            const auto& resize = std::get<window::WindowResizedEvent>(*lastResize);
+            CHECK(win->size() == window::WindowSize{.width = resize.width, .height = resize.height});
         }
     }
 

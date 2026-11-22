@@ -77,9 +77,9 @@ struct ViewDirectionalLight {
 
 /// @brief Кеш производных shading-данных на версию mesh-ресурса.
 ///
-/// Нормали граней вычисляются один раз для неизменного ресурса: ключом служат
-/// владелец ресурса и адрес данных вершин. Запись удерживает shared_ptr владельца,
-/// поэтому адрес не может быть переиспользован другим ресурсом, пока запись жива.
+/// Нормали вычисляются для неизменного ресурса. Ключ проверяет адрес данных
+/// и тождество слабого владельца, чтобы переиспользование адреса не дало ложное попадание.
+/// Для ресурса без владельца нормали вычисляются при каждом запросе.
 class ShadingDataCache {
 public:
     [[nodiscard]] std::expected<const std::vector<math::Vector3>*, RenderError>
@@ -88,35 +88,40 @@ public:
     [[nodiscard]] std::expected<const std::vector<math::Vector3>*, RenderError>
     vertexNormals(const render_contracts::MeshResource3& resource);
 
+    /// @brief Освобождает производные данные мешей, владельцев которых уже нет.
+    void releaseExpired();
+
     [[nodiscard]] std::size_t hits() const noexcept { return m_hits; }
     [[nodiscard]] std::size_t misses() const noexcept { return m_misses; }
 
 private:
     struct Entry {
-        std::shared_ptr<const void> owner;
-        const math::Point3* positions;
-        std::size_t triangleCount;
-        std::vector<math::Vector3> normals;
-    };
-
-    struct VertexEntry {
-        std::shared_ptr<const void> owner;
+        std::weak_ptr<const void> owner;
         const math::Point3* positions;
         const std::byte* triangles;
         std::size_t vertexCount;
         std::size_t triangleCount;
+        std::uint64_t version;
         std::vector<math::Vector3> normals;
     };
+
+    using CalculateNormals =
+        std::expected<std::vector<math::Vector3>, RenderError> (*)(const render_contracts::MeshResource3&, std::size_t);
+
+    [[nodiscard]] std::expected<const std::vector<math::Vector3>*, RenderError>
+    normalsFor(const render_contracts::MeshResource3& resource, std::vector<Entry>& entries,
+               std::vector<math::Vector3>& temporary, CalculateNormals calculate);
 
     [[nodiscard]] static std::expected<std::vector<math::Vector3>, RenderError>
     computeNormals(const render_contracts::MeshResource3& resource, std::size_t triangleCount);
 
     [[nodiscard]] static std::expected<std::vector<math::Vector3>, RenderError>
-    computeVertexNormals(const render_contracts::MeshResource3& resource, std::size_t triangleCount,
-                         std::size_t vertexCount);
+    computeVertexNormals(const render_contracts::MeshResource3& resource, std::size_t triangleCount);
 
     std::vector<Entry> m_entries;
-    std::vector<VertexEntry> m_vertexEntries;
+    std::vector<Entry> m_vertexEntries;
+    std::vector<math::Vector3> m_uncachedFaceNormals;
+    std::vector<math::Vector3> m_uncachedVertexNormals;
     std::size_t m_hits{};
     std::size_t m_misses{};
 };

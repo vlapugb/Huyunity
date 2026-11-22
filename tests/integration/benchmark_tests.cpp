@@ -1423,6 +1423,7 @@ private:
 
     bool initialize() {
         const auto xOpenDisplay = reinterpret_cast<void* (*)(const char*)>(dlsym(m_x11, "XOpenDisplay"));
+        const auto xFree = reinterpret_cast<int (*)(void*)>(dlsym(m_x11, "XFree"));
         m_closeDisplay = reinterpret_cast<int (*)(void*)>(dlsym(m_x11, "XCloseDisplay"));
         const auto chooseFbConfig =
             reinterpret_cast<void** (*)(void*, int, const int*, int*)>(dlsym(m_glx, "glXChooseFBConfig"));
@@ -1432,7 +1433,7 @@ private:
         m_getProc = reinterpret_cast<GetProcFn>(dlsym(m_glx, "glXGetProcAddressARB"));
         m_destroyContext = reinterpret_cast<void (*)(void*, void*)>(dlsym(m_glx, "glXDestroyContext"));
         m_makeCurrent = reinterpret_cast<int (*)(void*, unsigned long, void*)>(dlsym(m_glx, "glXMakeCurrent"));
-        if (xOpenDisplay == nullptr || m_closeDisplay == nullptr || chooseFbConfig == nullptr ||
+        if (xOpenDisplay == nullptr || xFree == nullptr || m_closeDisplay == nullptr || chooseFbConfig == nullptr ||
             createPbuffer == nullptr || m_destroyPbuffer == nullptr || m_getProc == nullptr ||
             m_destroyContext == nullptr || m_makeCurrent == nullptr) {
             return false;
@@ -1448,17 +1449,22 @@ private:
         }
         const int fbAttribs[] = {drawableType, pbufferBit, renderType, rgbaBit, 8, 8, 9, 8, 10, 8, 11, 8, 12, 24, 0};
         int configCount = 0;
-        void** configs = chooseFbConfig(m_display, 0, fbAttribs, &configCount);
-        if (configs == nullptr || configCount == 0) {
+        auto** configs = chooseFbConfig(m_display, 0, fbAttribs, &configCount);
+        if (configs == nullptr) {
+            return false;
+        }
+        auto* config = configCount > 0 ? configs[0] : nullptr;
+        xFree(configs);
+        if (config == nullptr) {
             return false;
         }
         const int pbufferAttribs[] = {pbufferWidth, 1280, pbufferHeight, 720, 0};
-        m_pbuffer = createPbuffer(m_display, configs[0], pbufferAttribs);
+        m_pbuffer = createPbuffer(m_display, config, pbufferAttribs);
         if (m_pbuffer == 0) {
             return false;
         }
         const int contextAttribs[] = {contextMajor, 3, contextMinor, 3, contextProfileMask, contextCoreProfile, 0};
-        m_context = createContextAttribs(m_display, configs[0], nullptr, 1, contextAttribs);
+        m_context = createContextAttribs(m_display, config, nullptr, 1, contextAttribs);
         if (m_context == nullptr) {
             return false;
         }

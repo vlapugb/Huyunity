@@ -268,7 +268,10 @@ public:
         if ((instance->localTransform.index() == 0) != is2D) {
             return std::unexpected(SceneError::TransformDimensionMismatch);
         }
-        instance->geometry = std::make_shared<const objectlib::Geometry>(std::move(geometry));
+        auto replacement = std::make_shared<const objectlib::Geometry>(std::move(geometry));
+        m_tessellationCache.markSourceDetached(instance->geometry);
+        m_tessellationCache.markSourceDetached(instance->finiteRepresentation);
+        instance->geometry = std::move(replacement);
         instance->finiteRepresentation.reset();
         ++instance->geometryVersion;
         ++instance->revisions.bounds;
@@ -294,7 +297,9 @@ public:
         if (!objectlib::bounds(geometry)) {
             return std::unexpected(SceneError::InvalidFiniteRepresentation);
         }
-        instance->finiteRepresentation = std::make_shared<const objectlib::Geometry>(std::move(geometry));
+        auto replacement = std::make_shared<const objectlib::Geometry>(std::move(geometry));
+        m_tessellationCache.markSourceDetached(instance->finiteRepresentation);
+        instance->finiteRepresentation = std::move(replacement);
         instance->localBounds.reset();
         instance->cachedBoundsGeometryVersion = 0;
         instance->dirty.bounds = true;
@@ -441,6 +446,8 @@ public:
         for (std::size_t i = 0; i < removal.size(); ++i) {
             const auto* instance = m_instances.find(removal[i]);
             removal.insert(removal.end(), instance->children.begin(), instance->children.end());
+            m_tessellationCache.markSourceDetached(instance->geometry);
+            m_tessellationCache.markSourceDetached(instance->finiteRepresentation);
         }
         m_instances.reserveRemoval(removal.size());
         detachFromParent(*m_instances.find(root));
@@ -517,6 +524,20 @@ public:
     [[nodiscard]] std::size_t size() const noexcept { return m_instances.size(); }
 
 private:
+    friend class RenderPreparation;
+
+    struct RenderInstances {
+        std::span<const ObjectId> ids;
+        std::span<const SceneInstance> instances;
+    };
+
+    /// @brief Представления идентификаторов и экземпляров в одном плотном порядке.
+    /// @return Данные действительны до изменения состава хранилища. Тесселяция меняет кеш и флаг
+    /// dirty.tessellation, сохраняя адреса и порядок экземпляров.
+    [[nodiscard]] RenderInstances instancesForRendering() const noexcept {
+        return {m_instances.ids(), m_instances.values()};
+    }
+
     [[nodiscard]] CommandResult applyOne(const CommandRequest& request) {
         CommandResult result{request.requestId, {}, {}};
         std::visit(

@@ -81,14 +81,16 @@ public:
                                                                render_contracts::Lighting3 lighting = {},
                                                                objectlib::TessellationOptions options = {},
                                                                double aspect = 1.0) {
+        scene.m_tessellationCache.collectDetachedSources();
         auto spatial = scene.refreshSpatialState();
         if (!spatial) {
             return std::unexpected(spatial.error());
         }
         WorldDrawList3 result{std::move(camera), std::move(lighting), {}};
         const auto worldToView = std::visit([](const auto& value) { return value.worldToView; }, result.camera);
-        const auto view = scene.view();
-        for (const auto& instance : view.instances) {
+        const auto [ids, instances] = scene.instancesForRendering();
+        for (std::size_t index = 0; index < instances.size(); ++index) {
+            const auto& instance = instances[index];
             const auto* transform = std::get_if<math::Transform3>(&instance.worldTransform);
             if (instance.renderSpace != RenderSpace::World || !instance.isVisible || transform == nullptr ||
                 !instance.worldBounds.has_value()) {
@@ -107,7 +109,7 @@ public:
             if (!inCamera && !inShadowCasterVolume) {
                 continue;
             }
-            auto geometry = scene.tessellation(instance.id, options);
+            auto geometry = scene.tessellation(ids[index], options);
             if (!geometry) {
                 return std::unexpected(geometry.error());
             }
@@ -120,13 +122,15 @@ public:
 
     [[nodiscard]] static Result<WorldDrawList2> prepareWorld2D(Scene& scene, render_contracts::Camera2 camera,
                                                                objectlib::TessellationOptions options = {}) {
+        scene.m_tessellationCache.collectDetachedSources();
         auto spatial = scene.refreshSpatialState();
         if (!spatial) {
             return std::unexpected(spatial.error());
         }
         WorldDrawList2 result{camera, {}};
-        const auto view = scene.view();
-        for (const auto& instance : view.instances) {
+        const auto [ids, instances] = scene.instancesForRendering();
+        for (std::size_t index = 0; index < instances.size(); ++index) {
+            const auto& instance = instances[index];
             const auto* transform = std::get_if<math::Transform2>(&instance.worldTransform);
             if (instance.renderSpace != RenderSpace::World || !instance.isVisible || transform == nullptr ||
                 !instance.worldBounds.has_value()) {
@@ -136,7 +140,7 @@ public:
             if (!isVisible(bounds, camera)) {
                 continue;
             }
-            auto geometry = scene.tessellation(instance.id, options);
+            auto geometry = scene.tessellation(ids[index], options);
             if (!geometry) {
                 return std::unexpected(geometry.error());
             }
@@ -148,14 +152,16 @@ public:
     }
 
     [[nodiscard]] static Result<HudDrawList2> prepareHud2D(Scene& scene, objectlib::TessellationOptions options = {}) {
+        scene.m_tessellationCache.collectDetachedSources();
         HudDrawList2 result;
-        const auto view = scene.view();
-        for (const auto& instance : view.instances) {
+        const auto [ids, instances] = scene.instancesForRendering();
+        for (std::size_t index = 0; index < instances.size(); ++index) {
+            const auto& instance = instances[index];
             const auto* transform = std::get_if<math::Transform2>(&instance.worldTransform);
             if (instance.renderSpace != RenderSpace::Hud || !instance.isVisible || transform == nullptr) {
                 continue;
             }
-            auto geometry = scene.tessellation(instance.id, options);
+            auto geometry = scene.tessellation(ids[index], options);
             if (!geometry) {
                 return std::unexpected(geometry.error());
             }
@@ -171,6 +177,9 @@ public:
 
     [[nodiscard]] static Result<PreparedPasses> preparePasses(Scene& scene, const PassesConfig& config,
                                                               double aspect = 1.0) {
+        if (!config.camera2 && !config.camera3 && !config.hudEnabled) {
+            scene.m_tessellationCache.collectDetachedSources();
+        }
         PreparedPasses result;
         auto appendWorld2 = [&]() -> std::expected<void, objectlib::GeometryError> {
             if (!config.camera2) {
